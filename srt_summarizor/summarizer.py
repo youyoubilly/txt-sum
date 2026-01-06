@@ -402,4 +402,204 @@ class Summarizer:
 """
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(markdown_content)
+    
+    def _suggest_filenames(
+        self,
+        input_file: Path,
+        output_file: Path,
+        summary: str,
+        provider: Optional[str] = None
+    ) -> Dict[str, List[str]]:
+        """Suggest better filenames using LLM.
+        
+        Args:
+            input_file: Original input file path.
+            output_file: Output summary file path.
+            summary: Summary text content.
+            provider: LLM provider name. If None, uses existing provider.
+        
+        Returns:
+            Dictionary with keys "original" and "output", each containing a list of 5 filename suggestions.
+            Returns empty lists if LLM call fails.
+        """
+        # Ensure LLM provider is available
+        if not self.llm_provider or provider:
+            try:
+                self.llm_provider = self._get_llm_provider(provider)
+            except Exception:
+                return {"original": [], "output": []}
+        
+        # Get brief excerpt from summary (first 800 chars)
+        summary_excerpt = summary[:800] + ("..." if len(summary) > 800 else "")
+        
+        # Create prompt for filename suggestions
+        prompt = f"""Based on the following information, suggest 5 better filenames for both the original subtitle file and its summary file.
+
+Original filename: {input_file.name}
+Output filename: {output_file.name}
+Summary excerpt:
+{summary_excerpt}
+
+Please provide 5 filename suggestions for each file. The filenames should:
+- Be descriptive and reflect the content
+- Be valid filenames (no invalid characters like /, \\, :, *, ?, ", <, >, |)
+- Be concise but meaningful
+- Preserve the original file extension for the original file
+- Use .md extension for the output file
+
+Format your response as JSON:
+{{
+  "original": ["filename1.srt", "filename2.srt", "filename3.srt", "filename4.srt", "filename5.srt"],
+  "output": ["filename1.md", "filename2.md", "filename3.md", "filename4.md", "filename5.md"]
+}}
+
+If you cannot format as JSON, provide a numbered list:
+Original file suggestions:
+1. filename1.srt
+2. filename2.srt
+3. filename3.srt
+4. filename4.srt
+5. filename5.srt
+
+Output file suggestions:
+1. filename1.md
+2. filename2.md
+3. filename3.md
+4. filename4.md
+5. filename5.md
+"""
+        
+        try:
+            response = self.llm_provider.generate(prompt, "", max_tokens=500, temperature=0.7)
+            return self._parse_filename_suggestions(response, input_file, output_file)
+        except Exception:
+            return {"original": [], "output": []}
+    
+    def _parse_filename_suggestions(
+        self,
+        response: str,
+        input_file: Path,
+        output_file: Path
+    ) -> Dict[str, List[str]]:
+        """Parse filename suggestions from LLM response.
+        
+        Args:
+            response: LLM response text.
+            input_file: Original input file path (for fallback).
+            output_file: Output file path (for fallback).
+        
+        Returns:
+            Dictionary with keys "original" and "output", each containing a list of up to 5 filename suggestions.
+        """
+        import json
+        import re
+        
+        result = {"original": [], "output": []}
+        input_ext = input_file.suffix
+        output_ext = output_file.suffix
+        
+        # Try to parse as JSON first
+        try:
+            # Look for JSON object in the response
+            json_match = re.search(r'\{[^{}]*"original"[^{}]*"output"[^{}]*\}', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(0))
+                original_suggestions = data.get("original", [])
+                output_suggestions = data.get("output", [])
+                
+                # Validate and clean suggestions
+                for suggestion in original_suggestions[:5]:
+                    if isinstance(suggestion, str):
+                        # Ensure extension is preserved
+                        if not suggestion.endswith(input_ext):
+                            suggestion = suggestion.rsplit(".", 1)[0] + input_ext
+                        # Sanitize filename
+                        suggestion = self._sanitize_filename(suggestion)
+                        if suggestion:
+                            result["original"].append(suggestion)
+                
+                for suggestion in output_suggestions[:5]:
+                    if isinstance(suggestion, str):
+                        # Ensure extension is .md
+                        if not suggestion.endswith(output_ext):
+                            suggestion = suggestion.rsplit(".", 1)[0] + output_ext
+                        # Sanitize filename
+                        suggestion = self._sanitize_filename(suggestion)
+                        if suggestion:
+                            result["output"].append(suggestion)
+                
+                if len(result["original"]) == 5 and len(result["output"]) == 5:
+                    return result
+        except Exception:
+            pass
+        
+        # Fallback: Parse numbered list format
+        # Look for "Original file suggestions:" or similar patterns
+        original_pattern = r'(?:original|input|source).*?file.*?suggestions?:?\s*\n((?:\d+\.\s*[^\n]+\n?){1,5})'
+        output_pattern = r'(?:output|summary).*?file.*?suggestions?:?\s*\n((?:\d+\.\s*[^\n]+\n?){1,5})'
+        
+        original_match = re.search(original_pattern, response, re.IGNORECASE | re.DOTALL)
+        output_match = re.search(output_pattern, response, re.IGNORECASE | re.DOTALL)
+        
+        if original_match:
+            lines = original_match.group(1).strip().split('\n')
+            for line in lines[:5]:
+                # Extract filename after number and dot
+                match = re.match(r'\d+\.\s*(.+)', line.strip())
+                if match:
+                    filename = match.group(1).strip()
+                    if not filename.endswith(input_ext):
+                        filename = filename.rsplit(".", 1)[0] + input_ext
+                    filename = self._sanitize_filename(filename)
+                    if filename:
+                        result["original"].append(filename)
+        
+        if output_match:
+            lines = output_match.group(1).strip().split('\n')
+            for line in lines[:5]:
+                # Extract filename after number and dot
+                match = re.match(r'\d+\.\s*(.+)', line.strip())
+                if match:
+                    filename = match.group(1).strip()
+                    if not filename.endswith(output_ext):
+                        filename = filename.rsplit(".", 1)[0] + output_ext
+                    filename = self._sanitize_filename(filename)
+                    if filename:
+                        result["output"].append(filename)
+        
+        # If we still don't have 5 suggestions, pad with original filenames
+        while len(result["original"]) < 5:
+            result["original"].append(input_file.name)
+        while len(result["output"]) < 5:
+            result["output"].append(output_file.name)
+        
+        return result
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitize filename by removing invalid characters.
+        
+        Args:
+            filename: Filename to sanitize.
+        
+        Returns:
+            Sanitized filename.
+        """
+        # Remove invalid characters: / \ : * ? " < > |
+        invalid_chars = r'[<>:"/\\|?*]'
+        sanitized = re.sub(invalid_chars, '_', filename)
+        
+        # Remove leading/trailing dots and spaces
+        sanitized = sanitized.strip('. ')
+        
+        # Limit length (keep extension)
+        if '.' in sanitized:
+            name, ext = sanitized.rsplit('.', 1)
+            if len(name) > 200:
+                name = name[:200]
+            sanitized = name + '.' + ext
+        else:
+            if len(sanitized) > 200:
+                sanitized = sanitized[:200]
+        
+        return sanitized if sanitized else "unnamed"
 

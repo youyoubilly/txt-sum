@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 import click
 from srt_summarizor import __version__
 from srt_summarizor.config import Config
@@ -81,6 +81,175 @@ def _read_context(context_input: Optional[str]) -> Optional[str]:
     return context_input.strip()
 
 
+def _extract_summary_from_markdown(markdown_file: Path) -> str:
+    """Extract summary text from markdown file.
+    
+    Args:
+        markdown_file: Path to markdown file.
+    
+    Returns:
+        Summary text content (without markdown header).
+    """
+    try:
+        with open(markdown_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Remove markdown header (everything before the first ---)
+        if "---" in content:
+            parts = content.split("---", 1)
+            if len(parts) > 1:
+                return parts[1].strip()
+        
+        # Fallback: return everything after first line
+        lines = content.split("\n")
+        if len(lines) > 1:
+            return "\n".join(lines[1:]).strip()
+        
+        return content.strip()
+    except Exception:
+        return ""
+
+
+def _interactive_filename_selection(
+    input_file: Path,
+    output_file: Path,
+    suggestions: Dict[str, List[str]]
+) -> Optional[Dict[str, str]]:
+    """Interactively ask user to select filenames from suggestions.
+    
+    Args:
+        input_file: Original input file path.
+        output_file: Original output file path.
+        suggestions: Dictionary with "original" and "output" keys, each containing list of suggestions.
+    
+    Returns:
+        Dictionary with "original" and "output" keys containing selected filenames, or None if user cancels.
+    """
+    original_suggestions = suggestions.get("original", [])
+    output_suggestions = suggestions.get("output", [])
+    
+    if not original_suggestions or not output_suggestions:
+        click.echo("Warning: Could not generate filename suggestions. Keeping original filenames.", err=True)
+        return None
+    
+    click.echo("\n" + "="*60)
+    click.echo("Filename Suggestions")
+    click.echo("="*60)
+    
+    # Display original file suggestions
+    click.echo(f"\nOriginal file: {input_file.name}")
+    click.echo("Suggested filenames:")
+    click.echo("  0. Keep original filename")
+    for i, suggestion in enumerate(original_suggestions[:5], 1):
+        click.echo(f"  {i}. {suggestion}")
+    
+    while True:
+        try:
+            choice_original = click.prompt(
+                "\nSelect filename for original file (0-5)",
+                type=click.IntRange(0, 5),
+                default=0
+            )
+            break
+        except click.Abort:
+            return None
+        except Exception:
+            click.echo("Invalid input. Please enter a number between 0 and 5.", err=True)
+    
+    # Display output file suggestions
+    click.echo(f"\nOutput file: {output_file.name}")
+    click.echo("Suggested filenames:")
+    click.echo("  0. Keep original filename")
+    for i, suggestion in enumerate(output_suggestions[:5], 1):
+        click.echo(f"  {i}. {suggestion}")
+    
+    while True:
+        try:
+            choice_output = click.prompt(
+                "\nSelect filename for output file (0-5)",
+                type=click.IntRange(0, 5),
+                default=0
+            )
+            break
+        except click.Abort:
+            return None
+        except Exception:
+            click.echo("Invalid input. Please enter a number between 0 and 5.", err=True)
+    
+    # Determine selected filenames
+    selected_original = input_file.name if choice_original == 0 else original_suggestions[choice_original - 1]
+    selected_output = output_file.name if choice_output == 0 else output_suggestions[choice_output - 1]
+    
+    # Show confirmation
+    click.echo("\nSelected filenames:")
+    click.echo(f"  Original: {selected_original}")
+    click.echo(f"  Output: {selected_output}")
+    
+    try:
+        if not click.confirm("\nProceed with renaming?", default=True):
+            return None
+    except click.Abort:
+        return None
+    
+    return {
+        "original": selected_original,
+        "output": selected_output
+    }
+
+
+def _rename_files(
+    input_file: Path,
+    output_file: Path,
+    new_names: Dict[str, str]
+) -> Dict[str, Path]:
+    """Rename files based on user selection.
+    
+    Args:
+        input_file: Original input file path.
+        output_file: Original output file path.
+        new_names: Dictionary with "original" and "output" keys containing new filenames.
+    
+    Returns:
+        Dictionary with "original" and "output" keys containing new file paths.
+    
+    Raises:
+        ValueError: If renaming fails.
+    """
+    result = {"original": input_file, "output": output_file}
+    
+    # Rename original file if needed
+    if new_names["original"] != input_file.name:
+        new_input_path = input_file.parent / new_names["original"]
+        
+        # Check for conflicts
+        if new_input_path.exists() and new_input_path != input_file:
+            click.echo(f"Warning: {new_input_path} already exists. Skipping rename of original file.", err=True)
+        else:
+            try:
+                input_file.rename(new_input_path)
+                result["original"] = new_input_path
+                click.echo(f"Renamed original file to: {new_input_path.name}")
+            except Exception as e:
+                click.echo(f"Error renaming original file: {e}", err=True)
+    
+    # Rename output file if needed
+    if new_names["output"] != output_file.name:
+        new_output_path = output_file.parent / new_names["output"]
+        
+        # Check for conflicts
+        if new_output_path.exists() and new_output_path != output_file:
+            click.echo(f"Warning: {new_output_path} already exists. Skipping rename of output file.", err=True)
+        else:
+            try:
+                output_file.rename(new_output_path)
+                result["output"] = new_output_path
+                click.echo(f"Renamed output file to: {new_output_path.name}")
+            except Exception as e:
+                click.echo(f"Error renaming output file: {e}", err=True)
+    
+    return result
+
+
 @click.command()
 @click.argument("files", nargs=-1, required=False, type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -129,8 +298,13 @@ def _read_context(context_input: Optional[str]) -> Optional[str]:
     is_flag=True,
     help="Force processing even if output file already exists (overwrite existing files)"
 )
+@click.option(
+    "--suggest-filenames",
+    is_flag=True,
+    help="After summarization, suggest better filenames using LLM and interactively ask for confirmation"
+)
 @click.version_option(version=__version__)
-def main(files, output, prompt_template, provider, config, init_config, verbose, language, context, force):
+def main(files, output, prompt_template, provider, config, init_config, verbose, language, context, force, suggest_filenames):
     """SRT Summarizor - Summarize subtitle files using LLM APIs.
     
     FILES: One or more subtitle files or directories to process (SRT, TXT, VTT, ASS/SSA)
@@ -259,6 +433,30 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
             click.echo(f"Summary saved to: {result}")
             if len(skipped_files) > 0:
                 click.echo(f"\nSkipped {len(skipped_files)} file(s) (output already exists)")
+            
+            # Handle filename suggestions if requested
+            if suggest_filenames:
+                try:
+                    summary_text = _extract_summary_from_markdown(result)
+                    suggestions = summarizer._suggest_filenames(
+                        input_file,
+                        result,
+                        summary_text,
+                        provider=provider
+                    )
+                    
+                    if suggestions.get("original") and suggestions.get("output"):
+                        selected = _interactive_filename_selection(input_file, result, suggestions)
+                        if selected:
+                            renamed = _rename_files(input_file, result, selected)
+                            # Update result path if output was renamed
+                            if renamed["output"] != result:
+                                result = renamed["output"]
+                except Exception as e:
+                    if verbose:
+                        click.echo(f"Error during filename suggestion: {e}", err=True)
+                    else:
+                        click.echo("Warning: Filename suggestion failed. Keeping original filenames.", err=True)
         
         else:
             # Batch processing
@@ -296,6 +494,68 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                     click.echo(f"  - {result}")
                 if len(skipped_files) > 0:
                     click.echo(f"\nSkipped {len(skipped_files)} file(s) (output already exists)")
+                
+                # Handle filename suggestions for batch processing if requested
+                if suggest_filenames:
+                    try:
+                        # Build mapping of input files to output files
+                        # Match by stem name since summarize_files creates output with same stem
+                        file_pairs: List[Tuple[Path, Path, str]] = []
+                        output_file_map = {out_file.stem: out_file for out_file in results}
+                        
+                        for input_file in files_to_process:
+                            # Find corresponding output file by matching stem
+                            if input_file.stem in output_file_map:
+                                output_file = output_file_map[input_file.stem]
+                                summary_text = _extract_summary_from_markdown(output_file)
+                                file_pairs.append((input_file, output_file, summary_text))
+                        
+                        # Generate suggestions for all files
+                        all_suggestions: List[Tuple[Path, Path, Dict[str, List[str]]]] = []
+                        click.echo("\nGenerating filename suggestions...")
+                        for input_file, output_file, summary_text in file_pairs:
+                            suggestions = summarizer._suggest_filenames(
+                                input_file,
+                                output_file,
+                                summary_text,
+                                provider=provider
+                            )
+                            if suggestions.get("original") and suggestions.get("output"):
+                                all_suggestions.append((input_file, output_file, suggestions))
+                        
+                        # Display all suggestions and get user input
+                        if all_suggestions:
+                            click.echo("\n" + "="*60)
+                            click.echo("Filename Suggestions for All Files")
+                            click.echo("="*60)
+                            
+                            selections: List[Optional[Dict[str, str]]] = []
+                            for input_file, output_file, suggestions in all_suggestions:
+                                click.echo(f"\n{'='*60}")
+                                click.echo(f"File: {input_file.name}")
+                                selected = _interactive_filename_selection(input_file, output_file, suggestions)
+                                selections.append(selected)
+                            
+                            # Apply all renames
+                            click.echo("\n" + "="*60)
+                            click.echo("Applying Renames")
+                            click.echo("="*60)
+                            for i, (input_file, output_file, _) in enumerate(all_suggestions):
+                                if selections[i]:
+                                    try:
+                                        renamed = _rename_files(input_file, output_file, selections[i])
+                                        # Update results list if output was renamed
+                                        if renamed["output"] != output_file and output_file in results:
+                                            idx = results.index(output_file)
+                                            results[idx] = renamed["output"]
+                                    except Exception as e:
+                                        if verbose:
+                                            click.echo(f"Error renaming files for {input_file.name}: {e}", err=True)
+                    except Exception as e:
+                        if verbose:
+                            click.echo(f"Error during filename suggestion: {e}", err=True)
+                        else:
+                            click.echo("Warning: Filename suggestion failed. Keeping original filenames.", err=True)
             else:
                 click.echo("No files were successfully processed.", err=True)
                 sys.exit(1)
