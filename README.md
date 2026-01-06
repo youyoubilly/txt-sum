@@ -81,6 +81,12 @@ srt-summarizor input.srt
 # Multiple files (batch processing)
 srt-summarizor file1.srt file2.txt file3.vtt
 
+# Process all subtitle files in a folder
+srt-summarizor /path/to/subtitles/
+
+# Mix files and folders
+srt-summarizor file1.srt /path/to/folder/ file2.srt
+
 # Specify output file
 srt-summarizor input.srt -o summary.md
 
@@ -92,6 +98,15 @@ srt-summarizor input.srt -l en
 srt-summarizor input.srt -l zh  # Chinese
 srt-summarizor input.srt -l es  # Spanish
 
+# Add additional context (direct text)
+srt-summarizor call.srt -c "this is a sale call from api provider to a company manager"
+
+# Add additional context (from file)
+srt-summarizor call.srt -c extra-context.txt
+
+# Process folder with force (overwrite existing outputs)
+srt-summarizor /path/to/subtitles/ --force
+
 # Override LLM provider
 srt-summarizor input.srt --provider lm_studio
 ```
@@ -101,6 +116,8 @@ srt-summarizor input.srt --provider lm_studio
 - `-o, --output PATH`: Output file path (single file) or directory (multiple files)
 - `-p, --prompt-template NAME`: Use a specific prompt template
 - `-l, --language CODE`: Language code for the summary (default: en). Examples: en, zh, es, fr, de, ja, ko
+- `-c, --context TEXT_OR_FILE`: Additional context to help with summarization. Can be direct text or a file path
+- `-f, --force`: Force processing even if output file already exists (overwrite existing files)
 - `--provider PROVIDER`: Override LLM provider (lm_studio, openai, qwen)
 - `--config PATH`: Use a custom config file
 - `--init-config`: Initialize config file in default location
@@ -183,6 +200,32 @@ Then use it with:
 ```bash
 srt-summarizor input.srt -p my_custom_template
 ```
+
+### Using Additional Context
+
+The `-c/--context` flag allows you to provide additional context that helps the LLM generate better summaries. This is especially useful when:
+
+- The subtitle content needs domain-specific understanding (e.g., technical calls, medical transcripts)
+- You want to focus on specific aspects (e.g., "focus on pricing discussions")
+- The content has background information that's not in the subtitles
+
+**Examples:**
+
+```bash
+# Provide context as direct text
+srt-summarizor meeting.srt -c "This is a product planning meeting. Focus on feature requirements and timeline discussions."
+
+# Provide context from a file
+srt-summarizor interview.srt -c interview-background.txt
+```
+
+The context file can contain any relevant information:
+- Background about participants
+- Domain-specific terminology
+- Focus areas or key points to emphasize
+- Any other context that helps understand the content
+
+The context is appended to the prompt template, so the LLM can use it to generate more accurate and relevant summaries.
 
 ## Supported File Formats
 

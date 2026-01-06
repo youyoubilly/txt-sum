@@ -105,6 +105,7 @@ class Summarizer:
         prompt_template: Optional[str] = None,
         provider: Optional[str] = None,
         language: str = "en",
+        extra_context: Optional[str] = None,
         **llm_kwargs
     ) -> Path:
         """Summarize a single subtitle file.
@@ -147,7 +148,7 @@ class Summarizer:
         
         # Generate summary
         try:
-            summary = self._generate_summary(content, prompt, language=language, **llm_kwargs)
+            summary = self._generate_summary(content, prompt, language=language, extra_context=extra_context, **llm_kwargs)
         except Exception as e:
             raise ValueError(f"Failed to generate summary: {e}") from e
         
@@ -175,6 +176,7 @@ class Summarizer:
         prompt_template: Optional[str] = None,
         provider: Optional[str] = None,
         language: str = "en",
+        extra_context: Optional[str] = None,
         **llm_kwargs
     ) -> List[Path]:
         """Summarize multiple subtitle files.
@@ -203,6 +205,7 @@ class Summarizer:
                     prompt_template=prompt_template,
                     provider=provider,
                     language=language,
+                    extra_context=extra_context,
                     **llm_kwargs
                 )
                 output_files.append(result)
@@ -213,13 +216,14 @@ class Summarizer:
         
         return output_files
     
-    def _generate_summary(self, content: str, prompt: str, language: str = "en", **kwargs) -> str:
+    def _generate_summary(self, content: str, prompt: str, language: str = "en", extra_context: Optional[str] = None, **kwargs) -> str:
         """Generate summary using LLM.
         
         Args:
             content: Subtitle content.
             prompt: Prompt template.
             language: Language code for the summary (default: en).
+            extra_context: Additional context to help with summarization.
             **kwargs: Additional LLM arguments.
         
         Returns:
@@ -231,19 +235,24 @@ class Summarizer:
         language_instruction = f"\n\nIMPORTANT: Write the summary in {language_name}. Do not include any thinking process, reasoning, or meta-commentary. Only provide the final summary."
         enhanced_prompt = prompt + language_instruction
         
+        # Add extra context if provided
+        if extra_context:
+            enhanced_prompt += f"\n\nAdditional Context:\n{extra_context}\n"
+        
         # Handle large content by chunking if needed
         if len(content) > self.MAX_CONTENT_LENGTH:
-            return self._generate_summary_chunked(content, enhanced_prompt, language=language, **kwargs)
+            return self._generate_summary_chunked(content, enhanced_prompt, language=language, extra_context=extra_context, **kwargs)
         else:
             return self.llm_provider.generate(enhanced_prompt, content, **kwargs)
     
-    def _generate_summary_chunked(self, content: str, prompt: str, language: str = "en", **kwargs) -> str:
+    def _generate_summary_chunked(self, content: str, prompt: str, language: str = "en", extra_context: Optional[str] = None, **kwargs) -> str:
         """Generate summary for large content by chunking.
         
         Args:
             content: Subtitle content.
             prompt: Prompt template.
             language: Language code for the summary.
+            extra_context: Additional context to help with summarization.
             **kwargs: Additional LLM arguments.
         
         Returns:
@@ -255,10 +264,13 @@ class Summarizer:
         chunks = self._chunk_content(content)
         summaries = []
         
+        # Add context to chunk prompt if provided
+        context_suffix = f"\n\nAdditional Context:\n{extra_context}\n" if extra_context else ""
+        
         for i, chunk in enumerate(chunks):
             chunk_prompt = (
                 f"This is chunk {i+1} of {len(chunks)}. "
-                f"Provide a summary focusing on the key points:\n\n{prompt}"
+                f"Provide a summary focusing on the key points:\n\n{prompt}{context_suffix}"
             )
             summary = self.llm_provider.generate(chunk_prompt, chunk, **kwargs)
             summary = self._clean_thinking_content(summary)
@@ -267,10 +279,11 @@ class Summarizer:
         # Combine summaries
         if len(summaries) > 1:
             combined_content = "\n\n".join(summaries)
+            context_note = f"\n\nNote: The following context applies to all parts: {extra_context}\n" if extra_context else ""
             final_prompt = (
                 f"The following are summaries of different parts of a subtitle file. "
                 f"Please combine them into a single coherent summary in {language_name}. "
-                f"Do not include any thinking process or reasoning - only the final summary:\n\n"
+                f"Do not include any thinking process or reasoning - only the final summary.{context_note}\n\n"
                 "{content}"
             )
             result = self.llm_provider.generate(final_prompt, combined_content, **kwargs)
@@ -316,14 +329,31 @@ class Summarizer:
         Returns:
             Cleaned text without thinking content.
         """
-        # Remove content in <think> tags
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # Remove content in <think> tags (with flexible whitespace and attributes)
+        # Run multiple passes to catch all variations and edge cases
+        for _ in range(3):  # Multiple passes to handle nested or overlapping tags
+            # Handle both opening and closing tags with optional whitespace/attributes
+            text = re.sub(r'<redacted_reasoning\s*[^>]*>.*?</redacted_reasoning\s*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            # Also remove any unclosed <think> tags and everything after them
+            text = re.sub(r'<redacted_reasoning\s*[^>]*>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+            # Remove any remaining closing tags without opening tags (with optional whitespace)
+            text = re.sub(r'</redacted_reasoning\s*>', '', text, flags=re.IGNORECASE)
+            # Remove any standalone opening tags (with optional whitespace)
+            text = re.sub(r'<redacted_reasoning\s*[^>]*>', '', text, flags=re.IGNORECASE)
         
         # Remove content in <thinking> tags
-        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        for _ in range(3):
+            text = re.sub(r'<thinking\s*[^>]*>.*?</thinking\s*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<thinking\s*[^>]*>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'</thinking\s*>', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'<thinking\s*[^>]*>', '', text, flags=re.IGNORECASE)
         
         # Remove content in <reasoning> tags
-        text = re.sub(r'<reasoning>.*?</reasoning>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        for _ in range(3):
+            text = re.sub(r'<reasoning\s*[^>]*>.*?</reasoning\s*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<reasoning\s*[^>]*>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'</reasoning\s*>', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'<reasoning\s*[^>]*>', '', text, flags=re.IGNORECASE)
         
         # Remove content in <!-- thinking --> comments
         text = re.sub(r'<!--\s*thinking.*?-->', '', text, flags=re.DOTALL | re.IGNORECASE)
