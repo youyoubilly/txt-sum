@@ -13,11 +13,8 @@ from txt_sum.utils.file_utils import (
     check_file_size,
     is_binary_file,
 )
-from txt_sum.utils.text_utils import extract_summary_from_markdown
 from txt_sum.utils.cli_utils import (
     read_context,
-    interactive_filename_selection,
-    rename_files,
 )
 
 
@@ -70,11 +67,6 @@ from txt_sum.utils.cli_utils import (
     help="Force processing even if output file already exists (overwrite existing files)"
 )
 @click.option(
-    "--suggest-filenames",
-    is_flag=True,
-    help="After summarization, suggest better filenames using LLM and interactively ask for confirmation"
-)
-@click.option(
     "--force-text",
     is_flag=True,
     help="Force processing of unknown file types (attempt to process as text even if format is unknown)"
@@ -85,7 +77,7 @@ from txt_sum.utils.cli_utils import (
     help="Process subtitle files with full context (preserve timestamps and formatting)"
 )
 @click.version_option(version=__version__)
-def main(files, output, prompt_template, provider, config, init_config, verbose, language, context, force, suggest_filenames, force_text, full_context):
+def main(files, output, prompt_template, provider, config, init_config, verbose, language, context, force, force_text, full_context):
     """txt-sum - Summarize text files using LLM APIs.
     
     FILES: One or more text files or directories to process
@@ -159,7 +151,7 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
     extra_context = None
     if context:
         try:
-            extra_context = _read_context(context)
+            extra_context = read_context(context)
         except (FileNotFoundError, ValueError) as e:
             click.echo(f"Error reading context: {e}", err=True)
             sys.exit(1)
@@ -254,30 +246,6 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
             click.echo(f"Summary saved to: {result}")
             if len(skipped_files) > 0:
                 click.echo(f"\nSkipped {len(skipped_files)} file(s) (output already exists)")
-            
-            # Handle filename suggestions if requested
-            if suggest_filenames:
-                try:
-                    summary_text = extract_summary_from_markdown(result)
-                    suggestions = summarizer._suggest_filenames(
-                        input_file,
-                        result,
-                        summary_text,
-                        provider=provider
-                    )
-                    
-                    if suggestions.get("original") and suggestions.get("output"):
-                        selected = interactive_filename_selection(input_file, result, suggestions)
-                        if selected:
-                            renamed = rename_files(input_file, result, selected)
-                            # Update result path if output was renamed
-                            if renamed["output"] != result:
-                                result = renamed["output"]
-                except Exception as e:
-                    if verbose:
-                        click.echo(f"Error during filename suggestion: {e}", err=True)
-                    else:
-                        click.echo("Warning: Filename suggestion failed. Keeping original filenames.", err=True)
         
         else:
             # Batch processing
@@ -304,6 +272,7 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                 click.echo(f"Processing [{idx}/{total_files}]: {input_file.name}")
                 
                 try:
+                    # Determine output filename
                     output_file = None
                     if output_dir:
                         output_file = output_dir / f"{input_file.stem}.md"
@@ -347,68 +316,6 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                     click.echo(f"  - {result}")
                 if len(skipped_files) > 0:
                     click.echo(f"\nSkipped {len(skipped_files)} file(s) (output already exists)")
-                
-                # Handle filename suggestions for batch processing if requested
-                if suggest_filenames:
-                    try:
-                        # Build mapping of input files to output files
-                        # Match by stem name since summarize_files creates output with same stem
-                        file_pairs: List[Tuple[Path, Path, str]] = []
-                        output_file_map = {out_file.stem: out_file for out_file in results}
-                        
-                        for input_file in files_to_process:
-                            # Find corresponding output file by matching stem
-                            if input_file.stem in output_file_map:
-                                output_file = output_file_map[input_file.stem]
-                                summary_text = extract_summary_from_markdown(output_file)
-                                file_pairs.append((input_file, output_file, summary_text))
-                        
-                        # Generate suggestions for all files
-                        all_suggestions: List[Tuple[Path, Path, Dict[str, List[str]]]] = []
-                        click.echo("\nGenerating filename suggestions...")
-                        for input_file, output_file, summary_text in file_pairs:
-                            suggestions = summarizer._suggest_filenames(
-                                input_file,
-                                output_file,
-                                summary_text,
-                                provider=provider
-                            )
-                            if suggestions.get("original") and suggestions.get("output"):
-                                all_suggestions.append((input_file, output_file, suggestions))
-                        
-                        # Display all suggestions and get user input
-                        if all_suggestions:
-                            click.echo("\n" + "="*60)
-                            click.echo("Filename Suggestions for All Files")
-                            click.echo("="*60)
-                            
-                            selections: List[Optional[Dict[str, str]]] = []
-                            for input_file, output_file, suggestions in all_suggestions:
-                                click.echo(f"\n{'='*60}")
-                                click.echo(f"File: {input_file.name}")
-                                selected = interactive_filename_selection(input_file, output_file, suggestions)
-                                selections.append(selected)
-                            
-                            # Apply all renames
-                            click.echo("\n" + "="*60)
-                            click.echo("Applying Renames")
-                            click.echo("="*60)
-                            for i, (input_file, output_file, _) in enumerate(all_suggestions):
-                                if selections[i]:
-                                    try:
-                                        renamed = rename_files(input_file, output_file, selections[i])
-                                        # Update results list if output was renamed
-                                        if renamed["output"] != output_file and output_file in results:
-                                            idx = results.index(output_file)
-                                            results[idx] = renamed["output"]
-                                    except Exception as e:
-                                        if verbose:
-                                            click.echo(f"Error renaming files for {input_file.name}: {e}", err=True)
-                    except Exception as e:
-                        if verbose:
-                            click.echo(f"Error during filename suggestion: {e}", err=True)
-                        else:
-                            click.echo("Warning: Filename suggestion failed. Keeping original filenames.", err=True)
             else:
                 click.echo("No files were successfully processed.", err=True)
                 sys.exit(1)

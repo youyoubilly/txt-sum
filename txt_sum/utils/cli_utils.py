@@ -39,7 +39,7 @@ def read_context(context_input: Optional[str]) -> Optional[str]:
 
 def interactive_filename_selection(
     input_file: Path,
-    output_file: Path,
+    output_file: Optional[Path],
     suggestions: Dict[str, List[str]]
 ) -> Optional[Dict[str, str]]:
     """Interactively ask user to select filenames from suggestions.
@@ -84,7 +84,10 @@ def interactive_filename_selection(
             click.echo("Invalid input. Please enter a number between 0 and 5.", err=True)
     
     # Display output file suggestions
-    click.echo(f"\nOutput file: {output_file.name}")
+    if output_file:
+        click.echo(f"\nOutput file: {output_file.name}")
+    else:
+        click.echo(f"\nOutput file: {input_file.stem}.md")
     click.echo("Suggested filenames:")
     click.echo("  0. Keep original filename")
     for i, suggestion in enumerate(output_suggestions[:5], 1):

@@ -39,23 +39,27 @@ class SubtitleParser:
         Raises:
             ValueError: If file format is not supported or file is binary.
         """
-        # Check if file is binary
-        if is_binary_file(file_path) and not force_text:
-            raise ValueError(f"File appears to be binary: {file_path}")
-        
         suffix = file_path.suffix.lower()
         
-        # Known subtitle formats - use specialized parsers
-        if suffix == ".srt":
-            return SRTParser.parse(file_path)
-        elif suffix == ".txt":
-            return TXTParser.parse(file_path)
-        elif suffix == ".vtt":
-            return VTTParser.parse(file_path)
-        elif suffix in [".ass", ".ssa"]:
-            return ASSParser.parse(file_path)
+        # Known subtitle formats - always text files, skip binary check
+        known_text_extensions = {".srt", ".txt", ".vtt", ".ass", ".ssa"}
+        
+        if suffix in known_text_extensions:
+            # Known text formats - use specialized parsers without binary check
+            if suffix == ".srt":
+                return SRTParser.parse(file_path)
+            elif suffix == ".txt":
+                return TXTParser.parse(file_path)
+            elif suffix == ".vtt":
+                return VTTParser.parse(file_path)
+            elif suffix in [".ass", ".ssa"]:
+                return ASSParser.parse(file_path)
         else:
-            # Unknown extension - try generic text parser
+            # Unknown extension - check if file is binary (unless force_text is True)
+            if is_binary_file(file_path) and not force_text:
+                raise ValueError(f"File appears to be binary: {file_path}")
+            
+            # Try generic text parser
             if is_text_file(file_path) or force_text:
                 return GenericTextParser.parse(file_path)
             else:
