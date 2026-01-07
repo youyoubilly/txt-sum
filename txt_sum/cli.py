@@ -7,6 +7,13 @@ import click
 from txt_sum import __version__
 from txt_sum.config import Config
 from txt_sum.summarizer import Summarizer
+from txt_sum.domain.errors import (
+    TxtSumError,
+    ConfigError,
+    ParseError,
+    ProviderError,
+    ContentTooLongError,
+)
 from txt_sum.utils.file_utils import (
     discover_text_files,
     get_output_path,
@@ -94,9 +101,15 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
     # Load configuration
     try:
         cfg = Config(config_path=config) if config else Config()
+    except ConfigError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        click.echo("Run with --init-config to create a default config file.", err=True)
+        sys.exit(1)
     except Exception as e:
         click.echo(f"Error loading config: {e}", err=True)
-        click.echo("Run with --init-config to create a default config file.", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
     
     # Validate and expand input paths (files and directories)
@@ -183,8 +196,18 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
     # Initialize summarizer
     try:
         summarizer = Summarizer(cfg)
+    except ConfigError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        sys.exit(1)
+    except ProviderError as e:
+        click.echo(f"Provider error: {e}", err=True)
+        click.echo("Please check your LLM provider configuration in ~/.txt-sum/config.yaml", err=True)
+        sys.exit(1)
     except Exception as e:
         click.echo(f"Error initializing summarizer: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
     
     # Display provider and prompt template information
@@ -216,30 +239,28 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                 if force:
                     click.echo("Force mode: Overwriting existing output file")
             
-            result = summarizer.summarize_file(
-                input_file,
-                output_file=output_file,
-                prompt_template=prompt_template,
-                provider=provider,
-                language=language,
-                extra_context=extra_context,
-                full_context=full_context,
-                force_text=force_text
-            )
+            try:
+                result = summarizer.summarize_file(
+                    input_file,
+                    output_file=output_file,
+                    prompt_template=prompt_template,
+                    provider=provider,
+                    language=language,
+                    extra_context=extra_context,
+                    full_context=full_context,
+                    force_text=force_text
+                )
+            except ContentTooLongError as e:
+                click.echo(f"Error: {e}", err=True)
+                sys.exit(1)
+            except ParseError as e:
+                click.echo(f"Parse error: {e}", err=True)
+                sys.exit(1)
+            except ProviderError as e:
+                click.echo(f"Provider error: {e}", err=True)
+                sys.exit(1)
             
             if result is None:
-                # Check if it was due to length
-                from txt_sum.parser import SubtitleParser
-                try:
-                    content = SubtitleParser.extract_text(input_file, full_context=full_context, force_text=force_text)
-                    if len(content) > summarizer.max_text_length:
-                        click.echo(
-                            f"Warning: File '{input_file.name}' exceeds maximum text length "
-                            f"({len(content)} characters > {summarizer.max_text_length} limit). Skipping...",
-                            err=True
-                        )
-                except Exception:
-                    pass
                 click.echo("File was skipped.", err=True)
                 sys.exit(0)
             
@@ -290,22 +311,33 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                     
                     if result is not None:
                         results.append(result)
-                    else:
-                        # File was skipped (likely due to length)
-                        from txt_sum.parser import SubtitleParser
-                        try:
-                            content = SubtitleParser.extract_text(input_file, full_context=full_context, force_text=force_text)
-                            if len(content) > summarizer.max_text_length:
-                                click.echo(
-                                    f"  Warning: Exceeds maximum text length "
-                                    f"({len(content)} > {summarizer.max_text_length} characters). Skipped.",
-                                    err=True
-                                )
-                        except Exception:
-                            pass
+                except ContentTooLongError as e:
+                    click.echo(f"  Skipped: Content too long ({e.content_length} > {e.max_length} characters)", err=True)
+                    continue
+                except ParseError as e:
+                    click.echo(f"  Parse error: {e}", err=True)
+                    if verbose:
+                        import traceback
+                        traceback.print_exc()
+                    continue
+                except ProviderError as e:
+                    click.echo(f"  Provider error: {e}", err=True)
+                    if verbose:
+                        import traceback
+                        traceback.print_exc()
+                    continue
+                except TxtSumError as e:
+                    click.echo(f"  Error: {e}", err=True)
+                    if verbose:
+                        import traceback
+                        traceback.print_exc()
+                    continue
                 except Exception as e:
                     # Continue with other files even if one fails
-                    click.echo(f"  Error: {e}", err=True)
+                    click.echo(f"  Unexpected error: {e}", err=True)
+                    if verbose:
+                        import traceback
+                        traceback.print_exc()
                     continue
             
             click.echo()  # Blank line before summary
@@ -320,11 +352,41 @@ def main(files, output, prompt_template, provider, config, init_config, verbose,
                 click.echo("No files were successfully processed.", err=True)
                 sys.exit(1)
     
-    except FileNotFoundError as e:
+    except ContentTooLongError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
-    except ValueError as e:
+    except ParseError as e:
+        click.echo(f"Parse error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+    except ProviderError as e:
+        click.echo(f"Provider error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+    except ConfigError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+    except TxtSumError as e:
         click.echo(f"Error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+    except FileNotFoundError as e:
+        click.echo(f"File not found: {e}", err=True)
+        sys.exit(1)
+    except ValueError as e:
+        click.echo(f"Value error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
     except KeyboardInterrupt:
         click.echo("\nOperation cancelled by user.", err=True)

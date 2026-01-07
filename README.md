@@ -353,11 +353,21 @@ The tool will suggest better filenames and ask for confirmation.
 
 ```
 txt-sum/
+├── docs/
+│   └── architecture.md     # Architecture documentation with diagrams
 ├── txt_sum/
 │   ├── cli.py              # CLI interface
 │   ├── config.py           # Configuration management
 │   ├── parser.py           # Text file parsers
-│   ├── summarizer.py       # Main summarization logic
+│   ├── summarizer.py       # Backward-compatible wrapper
+│   ├── domain/             # Domain layer (types, errors)
+│   │   ├── types.py        # Core data types
+│   │   └── errors.py       # Typed exceptions
+│   ├── app/                # Application layer (use cases)
+│   │   ├── summarize.py    # Main orchestration
+│   │   ├── chunking.py     # Content chunking
+│   │   ├── sanitize.py     # Response cleanup
+│   │   └── output.py       # Output formatting
 │   ├── utils/              # Utility modules
 │   │   ├── file_utils.py   # File operations
 │   │   ├── text_utils.py   # Text processing
@@ -365,12 +375,23 @@ txt-sum/
 │   ├── prompts/            # Prompt management
 │   │   ├── manager.py      # Prompt manager
 │   │   └── defaults.py     # Default prompts
-│   └── llm/
-│       ├── base.py         # LLM provider base class
-│       └── lm_studio.py    # LM Studio implementation
+│   └── llm/                # LLM provider layer
+│       ├── registry.py     # Provider registry
+│       └── providers/      # Provider implementations
+│           ├── base.py     # Base provider class
+│           ├── lm_studio.py    # LM Studio
+│           ├── qwen.py     # Alibaba Qwen
+│           └── openai.py   # OpenAI
+├── tests/                  # Test suite
+│   ├── test_chunking.py
+│   ├── test_sanitize.py
+│   ├── test_parser.py
+│   └── test_provider_registry.py
 ├── pyproject.toml          # Package configuration
 └── README.md               # This file
 ```
+
+For detailed architecture documentation and design decisions, see [docs/architecture.md](docs/architecture.md).
 
 ### Running Tests
 
@@ -378,9 +399,59 @@ txt-sum/
 # Install development dependencies
 pip install -e ".[dev]"
 
-# Run tests
+# Run all tests
 pytest
+
+# Run tests with coverage
+pytest --cov=txt_sum
+
+# Run specific test file
+pytest tests/test_chunking.py
+
+# Run with verbose output
+pytest -v
 ```
+
+### Development Workflow
+
+1. **Install in development mode:**
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+2. **Run tests before committing:**
+   ```bash
+   pytest
+   ```
+
+3. **Check code structure:**
+   - See `docs/architecture.md` for architecture guidelines
+   - New LLM providers go in `txt_sum/llm/providers/`
+   - Register new providers in `txt_sum/llm/registry.py`
+   - Add tests for new functionality
+
+4. **Add a new LLM provider:**
+   ```python
+   # 1. Create txt_sum/llm/providers/my_provider.py
+   from txt_sum.llm.providers.base import BaseLLMProvider
+   
+   class MyProvider(BaseLLMProvider):
+       def validate_config(self):
+           # Validation logic
+           return True
+       
+       def generate(self, prompt, content, **kwargs):
+           # Implementation
+           return summary
+   
+   # 2. Register in txt_sum/llm/registry.py
+   from txt_sum.llm.providers.my_provider import MyProvider
+   
+   _providers = {
+       "my_provider": MyProvider,
+       # ... existing providers
+   }
+   ```
 
 ## License
 
