@@ -1,11 +1,11 @@
-"""Subtitle file parsers for various formats."""
+"""Text file parsers for various formats."""
 
 import re
 from pathlib import Path
 from typing import List, Tuple, Optional
-from charset_normalizer import detect
 import pysrt
 import webvtt
+from txt_sum.utils.file_utils import detect_encoding, is_binary_file, is_text_file
 
 
 class SubtitleEntry:
@@ -23,44 +23,29 @@ class SubtitleEntry:
 
 
 class SubtitleParser:
-    """Base class for subtitle parsers."""
-    
-    @staticmethod
-    def detect_encoding(file_path: Path) -> str:
-        """Detect file encoding.
-        
-        Args:
-            file_path: Path to file.
-        
-        Returns:
-            Detected encoding (defaults to 'utf-8').
-        """
-        with open(file_path, "rb") as f:
-            raw_data = f.read()
-            result = detect(raw_data)
-            if result:
-                encoding = result.get("encoding", "utf-8")
-                # Handle common encoding issues
-                if encoding.lower() in ["ascii", "windows-1252"]:
-                    encoding = "utf-8"
-                return encoding
-        return "utf-8"
+    """Base class for text file parsers."""
     
     @classmethod
-    def parse(cls, file_path: Path) -> List[SubtitleEntry]:
-        """Parse subtitle file.
+    def parse(cls, file_path: Path, force_text: bool = False) -> List[SubtitleEntry]:
+        """Parse text file.
         
         Args:
-            file_path: Path to subtitle file.
+            file_path: Path to text file.
+            force_text: If True, attempt to process unknown file types.
         
         Returns:
             List of subtitle entries.
         
         Raises:
-            ValueError: If file format is not supported.
+            ValueError: If file format is not supported or file is binary.
         """
+        # Check if file is binary
+        if is_binary_file(file_path) and not force_text:
+            raise ValueError(f"File appears to be binary: {file_path}")
+        
         suffix = file_path.suffix.lower()
         
+        # Known subtitle formats - use specialized parsers
         if suffix == ".srt":
             return SRTParser.parse(file_path)
         elif suffix == ".txt":
@@ -70,21 +55,77 @@ class SubtitleParser:
         elif suffix in [".ass", ".ssa"]:
             return ASSParser.parse(file_path)
         else:
-            raise ValueError(f"Unsupported file format: {suffix}")
+            # Unknown extension - try generic text parser
+            if is_text_file(file_path) or force_text:
+                return GenericTextParser.parse(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {suffix}. Use --force-text to process anyway.")
     
     @classmethod
-    def extract_text(cls, file_path: Path) -> str:
-        """Extract plain text from subtitle file.
+    def extract_text(cls, file_path: Path, full_context: bool = False, force_text: bool = False) -> str:
+        """Extract plain text from file.
         
         Args:
-            file_path: Path to subtitle file.
+            file_path: Path to file.
+            full_context: If True, preserve timestamps and formatting.
+            force_text: If True, attempt to process unknown file types.
         
         Returns:
             Plain text content.
         """
-        entries = cls.parse(file_path)
-        texts = [entry.text for entry in entries if entry.text.strip()]
-        return "\n".join(texts)
+        entries = cls.parse(file_path, force_text=force_text)
+        
+        if full_context:
+            # Include timestamps and formatting
+            texts = []
+            for entry in entries:
+                parts = []
+                if entry.start_time and entry.end_time:
+                    parts.append(f"[{entry.start_time} --> {entry.end_time}]")
+                if entry.speaker:
+                    parts.append(f"{entry.speaker}:")
+                parts.append(entry.text)
+                texts.append(" ".join(parts))
+            return "\n".join(texts)
+        else:
+            # Extract only text content (timestamps excluded)
+            texts = [entry.text for entry in entries if entry.text.strip()]
+            return "\n".join(texts)
+
+
+class GenericTextParser(SubtitleParser):
+    """Parser for generic text files."""
+    
+    @classmethod
+    def parse(cls, file_path: Path) -> List[SubtitleEntry]:
+        """Parse generic text file.
+        
+        Args:
+            file_path: Path to text file.
+        
+        Returns:
+            List of subtitle entries (one per line or paragraph).
+        """
+        encoding = detect_encoding(file_path)
+        with open(file_path, "r", encoding=encoding) as f:
+            content = f.read()
+        
+        entries = []
+        # Try paragraph mode first (double newline)
+        if "\n\n" in content:
+            paragraphs = content.split("\n\n")
+            for para in paragraphs:
+                text = para.strip().replace("\n", " ")
+                if text:
+                    entries.append(SubtitleEntry(text=text))
+        else:
+            # Line mode
+            for line in content.split("\n"):
+                text = line.strip()
+                if text:
+                    entries.append(SubtitleEntry(text=text))
+        
+        return entries
 
 
 class SRTParser(SubtitleParser):
@@ -100,7 +141,7 @@ class SRTParser(SubtitleParser):
         Returns:
             List of subtitle entries.
         """
-        encoding = cls.detect_encoding(file_path)
+        encoding = detect_encoding(file_path)
         try:
             subs = pysrt.open(str(file_path), encoding=encoding)
             entries = []
@@ -150,7 +191,7 @@ class TXTParser(SubtitleParser):
         Returns:
             List of subtitle entries (one per line or paragraph).
         """
-        encoding = cls.detect_encoding(file_path)
+        encoding = detect_encoding(file_path)
         with open(file_path, "r", encoding=encoding) as f:
             content = f.read()
         
@@ -185,7 +226,7 @@ class VTTParser(SubtitleParser):
         Returns:
             List of subtitle entries.
         """
-        encoding = cls.detect_encoding(file_path)
+        encoding = detect_encoding(file_path)
         try:
             vtt = webvtt.read(str(file_path), encoding=encoding)
             entries = []
@@ -255,7 +296,7 @@ class ASSParser(SubtitleParser):
         Returns:
             List of subtitle entries.
         """
-        encoding = cls.detect_encoding(file_path)
+        encoding = detect_encoding(file_path)
         with open(file_path, "r", encoding=encoding) as f:
             content = f.read()
         
@@ -302,9 +343,13 @@ class ASSParser(SubtitleParser):
         Returns:
             Cleaned text.
         """
-        # Remove common ASS tags: {\...}, \N (newline), \n, etc.
+        # Remove all formatting tags: {\...} (font size, color, animation, etc.)
         text = re.sub(r"\{[^}]*\}", "", text)  # Remove {tags}
+        # Remove control codes: \N (newline), \n, etc.
         text = text.replace("\\N", " ").replace("\\n", " ")
-        text = re.sub(r"\\[a-z]+", "", text)  # Remove \tag commands
+        # Remove \tag commands
+        text = re.sub(r"\\[a-z]+", "", text, flags=re.IGNORECASE)
+        # Remove style information and other control sequences
+        text = re.sub(r"\\[0-9]+", "", text)  # Remove numeric codes
         return text.strip()
 

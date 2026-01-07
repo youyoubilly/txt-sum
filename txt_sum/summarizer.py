@@ -3,10 +3,12 @@
 import re
 from pathlib import Path
 from typing import Optional, List, Dict
-from srt_summarizor.parser import SubtitleParser
-from srt_summarizor.config import Config
-from srt_summarizor.llm.base import BaseLLMProvider
-from srt_summarizor.llm.lm_studio import LMStudioProvider
+from txt_sum.parser import SubtitleParser
+from txt_sum.config import Config
+from txt_sum.llm.base import BaseLLMProvider
+from txt_sum.llm.lm_studio import LMStudioProvider
+from txt_sum.prompts.manager import PromptManager
+from txt_sum.utils.text_utils import sanitize_filename
 
 # Language code to full name mapping
 LANGUAGE_MAP: Dict[str, str] = {
@@ -51,7 +53,7 @@ def get_language_name(lang_code: str) -> str:
 
 
 class Summarizer:
-    """Orchestrates subtitle parsing and LLM summarization."""
+    """Orchestrates text file parsing and LLM summarization."""
     
     # Maximum content length per LLM call (characters)
     MAX_CONTENT_LENGTH = 10000
@@ -64,6 +66,9 @@ class Summarizer:
         """
         self.config = config or Config()
         self.llm_provider: Optional[BaseLLMProvider] = None
+        self.prompt_manager = PromptManager(self.config.get_prompts_file())
+        # Get max text length from config
+        self.max_text_length = self.config.get("max_text_length", 100000)
     
     def _get_llm_provider(self, provider_name: Optional[str] = None) -> BaseLLMProvider:
         """Get LLM provider instance.
@@ -106,19 +111,25 @@ class Summarizer:
         provider: Optional[str] = None,
         language: str = "en",
         extra_context: Optional[str] = None,
+        full_context: bool = False,
+        force_text: bool = False,
         **llm_kwargs
-    ) -> Path:
-        """Summarize a single subtitle file.
+    ) -> Optional[Path]:
+        """Summarize a single text file.
         
         Args:
-            input_file: Path to input subtitle file.
+            input_file: Path to input text file.
             output_file: Path to output markdown file. If None, auto-generates.
             prompt_template: Prompt template name. If None, uses default.
             provider: LLM provider name. If None, uses default from config.
+            language: Language code for the summary.
+            extra_context: Additional context to help with summarization.
+            full_context: If True, preserve timestamps and formatting.
+            force_text: If True, attempt to process unknown file types.
             **llm_kwargs: Additional arguments for LLM (temperature, max_tokens, etc.)
         
         Returns:
-            Path to output file.
+            Path to output file, or None if file was skipped due to length.
         
         Raises:
             FileNotFoundError: If input file doesn't exist.
@@ -131,18 +142,23 @@ class Summarizer:
         if not self.llm_provider or provider:
             self.llm_provider = self._get_llm_provider(provider)
         
-        # Parse subtitle file
+        # Parse text file
         try:
-            content = SubtitleParser.extract_text(input_file)
+            content = SubtitleParser.extract_text(input_file, full_context=full_context, force_text=force_text)
         except Exception as e:
-            raise ValueError(f"Failed to parse subtitle file: {e}") from e
+            raise ValueError(f"Failed to parse file: {e}") from e
         
         if not content.strip():
-            raise ValueError("Subtitle file is empty or contains no text")
+            raise ValueError("File is empty or contains no text")
+        
+        # Check text length
+        if len(content) > self.max_text_length:
+            # Return None to indicate file was skipped
+            return None
         
         # Get prompt template
         try:
-            prompt = self.config.get_prompt_template(prompt_template)
+            prompt = self.prompt_manager.get_prompt(prompt_template)
         except ValueError as e:
             raise ValueError(f"Prompt template error: {e}") from e
         
@@ -177,19 +193,25 @@ class Summarizer:
         provider: Optional[str] = None,
         language: str = "en",
         extra_context: Optional[str] = None,
+        full_context: bool = False,
+        force_text: bool = False,
         **llm_kwargs
     ) -> List[Path]:
-        """Summarize multiple subtitle files.
+        """Summarize multiple text files.
         
         Args:
-            input_files: List of input subtitle file paths.
+            input_files: List of input text file paths.
             output_dir: Output directory. If None, uses config default or input file directory.
             prompt_template: Prompt template name. If None, uses default.
             provider: LLM provider name. If None, uses default from config.
+            language: Language code for the summary.
+            extra_context: Additional context to help with summarization.
+            full_context: If True, preserve timestamps and formatting.
+            force_text: If True, attempt to process unknown file types.
             **llm_kwargs: Additional arguments for LLM.
         
         Returns:
-            List of output file paths.
+            List of output file paths (skipped files are not included).
         """
         output_files = []
         
@@ -206,9 +228,15 @@ class Summarizer:
                     provider=provider,
                     language=language,
                     extra_context=extra_context,
+                    full_context=full_context,
+                    force_text=force_text,
                     **llm_kwargs
                 )
-                output_files.append(result)
+                if result is not None:
+                    output_files.append(result)
+                else:
+                    # File was skipped (likely due to length)
+                    skipped_files.append((input_file, "exceeded text length limit"))
             except Exception as e:
                 # Continue with other files even if one fails
                 print(f"Error processing {input_file}: {e}")
@@ -220,7 +248,7 @@ class Summarizer:
         """Generate summary using LLM.
         
         Args:
-            content: Subtitle content.
+            content: Text content.
             prompt: Prompt template.
             language: Language code for the summary (default: en).
             extra_context: Additional context to help with summarization.
@@ -249,7 +277,7 @@ class Summarizer:
         """Generate summary for large content by chunking.
         
         Args:
-            content: Subtitle content.
+            content: Text content.
             prompt: Prompt template.
             language: Language code for the summary.
             extra_context: Additional context to help with summarization.
@@ -281,7 +309,7 @@ class Summarizer:
             combined_content = "\n\n".join(summaries)
             context_note = f"\n\nNote: The following context applies to all parts: {extra_context}\n" if extra_context else ""
             final_prompt = (
-                f"The following are summaries of different parts of a subtitle file. "
+                f"The following are summaries of different parts of a text file. "
                 f"Please combine them into a single coherent summary in {language_name}. "
                 f"Do not include any thinking process or reasoning - only the final summary.{context_note}\n\n"
                 "{content}"
@@ -332,14 +360,20 @@ class Summarizer:
         # Remove content in <think> tags (with flexible whitespace and attributes)
         # Run multiple passes to catch all variations and edge cases
         for _ in range(3):  # Multiple passes to handle nested or overlapping tags
-            # Handle both opening and closing tags with optional whitespace/attributes
-            text = re.sub(r'<redacted_reasoning\s*[^>]*>.*?</redacted_reasoning\s*>', '', text, flags=re.DOTALL | re.IGNORECASE)
-            # Also remove any unclosed <think> tags and everything after them
-            text = re.sub(r'<redacted_reasoning\s*[^>]*>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
-            # Remove any remaining closing tags without opening tags (with optional whitespace)
+            # Pattern 1: Simple pattern that matches complete tags with any content
+            # This matches: <think>...content...</think>
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            # Pattern 2: Match tags with attributes or whitespace
+            text = re.sub(r'<redacted_reasoning[^>]*>.*?</redacted_reasoning[^>]*>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            # Pattern 3: Also remove any unclosed <think> tags and everything after them
+            text = re.sub(r'<redacted_reasoning[^>]*>.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+            # Pattern 4: Remove any remaining closing tags without opening tags
+            # Handle both <think> and <think> closing tags explicitly
+            text = re.sub(r'</think>', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'</think>', '', text, flags=re.IGNORECASE)
             text = re.sub(r'</redacted_reasoning\s*>', '', text, flags=re.IGNORECASE)
-            # Remove any standalone opening tags (with optional whitespace)
-            text = re.sub(r'<redacted_reasoning\s*[^>]*>', '', text, flags=re.IGNORECASE)
+            # Pattern 5: Remove any standalone opening tags
+            text = re.sub(r'<redacted_reasoning[^>]*>', '', text, flags=re.IGNORECASE)
         
         # Remove content in <thinking> tags
         for _ in range(3):
@@ -375,6 +409,28 @@ class Summarizer:
                 skip_thinking = False
             
             if not skip_thinking:
+                cleaned_lines.append(line)
+        
+        text = '\n'.join(cleaned_lines)
+        
+        # Remove standalone placeholder words that were likely inside reasoning tags
+        # Common placeholder words: "space", "thinking", "reasoning", etc.
+        placeholder_patterns = [
+            r'^\s*space\s*$',  # Standalone "space" on its own line
+            r'^\s*thinking\s*$',  # Standalone "thinking" on its own line
+            r'^\s*reasoning\s*$',  # Standalone "reasoning" on its own line
+            r'^\s*\.\s*$',  # Just a period
+            r'^\s*\.\.\.\s*$',  # Just ellipsis
+        ]
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            should_skip = False
+            for pattern in placeholder_patterns:
+                if re.match(pattern, line, re.IGNORECASE):
+                    should_skip = True
+                    break
+            if not should_skip:
                 cleaned_lines.append(line)
         
         text = '\n'.join(cleaned_lines)
@@ -514,7 +570,7 @@ Output file suggestions:
                         if not suggestion.endswith(input_ext):
                             suggestion = suggestion.rsplit(".", 1)[0] + input_ext
                         # Sanitize filename
-                        suggestion = self._sanitize_filename(suggestion)
+                        suggestion = sanitize_filename(suggestion)
                         if suggestion:
                             result["original"].append(suggestion)
                 
@@ -524,7 +580,7 @@ Output file suggestions:
                         if not suggestion.endswith(output_ext):
                             suggestion = suggestion.rsplit(".", 1)[0] + output_ext
                         # Sanitize filename
-                        suggestion = self._sanitize_filename(suggestion)
+                        suggestion = sanitize_filename(suggestion)
                         if suggestion:
                             result["output"].append(suggestion)
                 
@@ -550,7 +606,7 @@ Output file suggestions:
                     filename = match.group(1).strip()
                     if not filename.endswith(input_ext):
                         filename = filename.rsplit(".", 1)[0] + input_ext
-                    filename = self._sanitize_filename(filename)
+                    filename = sanitize_filename(filename)
                     if filename:
                         result["original"].append(filename)
         
@@ -563,7 +619,7 @@ Output file suggestions:
                     filename = match.group(1).strip()
                     if not filename.endswith(output_ext):
                         filename = filename.rsplit(".", 1)[0] + output_ext
-                    filename = self._sanitize_filename(filename)
+                    filename = sanitize_filename(filename)
                     if filename:
                         result["output"].append(filename)
         
@@ -575,31 +631,4 @@ Output file suggestions:
         
         return result
     
-    def _sanitize_filename(self, filename: str) -> str:
-        """Sanitize filename by removing invalid characters.
-        
-        Args:
-            filename: Filename to sanitize.
-        
-        Returns:
-            Sanitized filename.
-        """
-        # Remove invalid characters: / \ : * ? " < > |
-        invalid_chars = r'[<>:"/\\|?*]'
-        sanitized = re.sub(invalid_chars, '_', filename)
-        
-        # Remove leading/trailing dots and spaces
-        sanitized = sanitized.strip('. ')
-        
-        # Limit length (keep extension)
-        if '.' in sanitized:
-            name, ext = sanitized.rsplit('.', 1)
-            if len(name) > 200:
-                name = name[:200]
-            sanitized = name + '.' + ext
-        else:
-            if len(sanitized) > 200:
-                sanitized = sanitized[:200]
-        
-        return sanitized if sanitized else "unnamed"
 

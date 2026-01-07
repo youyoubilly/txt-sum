@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "srt-summarizor"
+name = "txt-sum"
 version = "0.1.0"
-description = "A tool to summarize subtitle files (SRT, TXT, VTT, ASS/SSA) using LLM APIs"
+description = "A tool to summarize text files using LLM APIs"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
     {name = "Billy Wang", email = "billy@techxartisan.com"}
 ]
-keywords = ["srt", "subtitle", "llm", "summarization", "ai", "transcript", "summary"]
+keywords = ["text", "document", "file", "llm", "summarization", "ai", "transcript", "summary", "srt", "subtitle"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -35,14 +35,14 @@ dependencies = [
 ]
 
 [project.scripts]
-srt-summarizor = "srt_summarizor.cli:main"
+txt-sum = "txt_sum.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/youyoubilly/srt-summarizor"
-Repository = "https://github.com/youyoubilly/srt-summarizor"
-Issues = "https://github.com/youyoubilly/srt-summarizor/issues"
+Homepage = "https://github.com/youyoubilly/txt-sum"
+Repository = "https://github.com/youyoubilly/txt-sum"
+Issues = "https://github.com/youyoubilly/txt-sum/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["srt_summarizor*"]
+include = ["txt_sum*"]
 

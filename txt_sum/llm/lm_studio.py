@@ -2,7 +2,7 @@
 
 import requests
 from typing import Dict, Any, Optional
-from srt_summarizor.llm.base import BaseLLMProvider
+from txt_sum.llm.base import BaseLLMProvider
 
 
 class LMStudioProvider(BaseLLMProvider):

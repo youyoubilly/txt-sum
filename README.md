@@ -1,18 +1,21 @@
-# SRT Summarizor
+# txt-sum
 
-> **Smart subtitle summarization using LLM APIs**
+> **Smart text file summarization using LLM APIs**
 
-A Python command-line tool to summarize subtitle files (SRT, TXT, VTT, ASS/SSA) using LLM APIs. Perfect for quickly understanding the content of video subtitles, transcripts, or dialogue files.
+A Python command-line tool to summarize text files using LLM APIs. Supports subtitle formats (SRT, TXT, VTT, ASS/SSA) and any text-based file. Perfect for quickly understanding the content of video subtitles, transcripts, dialogue files, documents, and more.
 
 > **Note**: This tool was primarily developed with AI assistance (vibe coding), starting from initial concepts and requirements by Billy Wang. While the code has been tested and is functional, users are advised to use it at their own discretion and responsibility. Please review the code and test thoroughly for your specific use cases.
 
 ## Features
 
-- **Multiple Subtitle Formats**: Supports SRT, TXT, VTT, and ASS/SSA formats
+- **Any Text File Support**: Process subtitle formats (SRT, TXT, VTT, ASS/SSA) and any text-based file
+- **Smart Formatting Removal**: Automatically strips timestamps and formatting from subtitle files to reduce text size
 - **LLM Integration**: Works with local LLM servers (LM Studio) and cloud APIs (OpenAI, Alibaba Qwen - coming soon)
-- **Configurable Prompts**: Customize summarization style with prompt templates
+- **Configurable Prompts**: Customize summarization style with prompt templates stored in `~/.txt-sum/prompts.yaml`
 - **Batch Processing**: Process multiple files at once
-- **Easy Configuration**: Simple YAML-based configuration stored in `~/.srt-summarizor/`
+- **Text Length Limits**: Automatically skips files that exceed configurable length limits
+- **Filename Suggestions**: AI-powered filename recommendations with interactive selection
+- **Easy Configuration**: Simple YAML-based configuration stored in `~/.txt-sum/`
 
 ## Installation
 
@@ -20,8 +23,8 @@ A Python command-line tool to summarize subtitle files (SRT, TXT, VTT, ASS/SSA) 
 
 ```bash
 # Clone the repository
-git clone https://github.com/youyoubilly/srt-summarizor.git
-cd srt-summarizor
+git clone https://github.com/youyoubilly/txt-sum.git
+cd txt-sum
 
 # Install the package
 pip install -e .
@@ -30,7 +33,7 @@ pip install -e .
 ### From PyPI (when published)
 
 ```bash
-pip install srt-summarizor
+pip install txt-sum
 ```
 
 ## Quick Start
@@ -38,14 +41,16 @@ pip install srt-summarizor
 1. **Initialize Configuration**
 
    ```bash
-   srt-summarizor --init-config
+   txt-sum --init-config
    ```
 
-   This creates a configuration file at `~/.srt-summarizor/config.yaml`.
+   This creates configuration files at:
+   - `~/.txt-sum/config.yaml` - LLM provider settings
+   - `~/.txt-sum/prompts.yaml` - Prompt templates
 
 2. **Edit Configuration**
 
-   Open `~/.srt-summarizor/config.yaml` and configure your LLM provider:
+   Open `~/.txt-sum/config.yaml` and configure your LLM provider:
 
    ```yaml
    llm_provider: lm_studio
@@ -65,7 +70,7 @@ pip install srt-summarizor
 4. **Summarize a File**
 
    ```bash
-   srt-summarizor movie.srt
+   txt-sum movie.srt
    ```
 
    This creates `movie.md` in the same directory as the input file.
@@ -76,39 +81,48 @@ pip install srt-summarizor
 
 ```bash
 # Single file
-srt-summarizor input.srt
+txt-sum input.srt
 
 # Multiple files (batch processing)
-srt-summarizor file1.srt file2.txt file3.vtt
+txt-sum file1.srt file2.txt file3.vtt
 
-# Process all subtitle files in a folder
-srt-summarizor /path/to/subtitles/
+# Process all text files in a folder
+txt-sum /path/to/files/
 
 # Mix files and folders
-srt-summarizor file1.srt /path/to/folder/ file2.srt
+txt-sum file1.srt /path/to/folder/ file2.txt
+
+# Process any text file (not just subtitles)
+txt-sum document.txt --force-text
 
 # Specify output file
-srt-summarizor input.srt -o summary.md
+txt-sum input.srt -o summary.md
 
 # Use a specific prompt template
-srt-summarizor input.srt -p detailed
+txt-sum input.srt -p detailed
 
 # Specify summary language (default: en)
-srt-summarizor input.srt -l en
-srt-summarizor input.srt -l zh  # Chinese
-srt-summarizor input.srt -l es  # Spanish
+txt-sum input.srt -l en
+txt-sum input.srt -l zh  # Chinese
+txt-sum input.srt -l es  # Spanish
 
 # Add additional context (direct text)
-srt-summarizor call.srt -c "this is a sale call from api provider to a company manager"
+txt-sum call.srt -c "this is a sale call from api provider to a company manager"
 
 # Add additional context (from file)
-srt-summarizor call.srt -c extra-context.txt
+txt-sum call.srt -c extra-context.txt
 
 # Process folder with force (overwrite existing outputs)
-srt-summarizor /path/to/subtitles/ --force
+txt-sum /path/to/files/ --force
 
 # Override LLM provider
-srt-summarizor input.srt --provider lm_studio
+txt-sum input.srt --provider lm_studio
+
+# Preserve timestamps and formatting (for subtitle files)
+txt-sum input.srt --full-context
+
+# Suggest better filenames after summarization
+txt-sum input.srt --suggest-filenames
 ```
 
 ### Command Options
@@ -118,18 +132,24 @@ srt-summarizor input.srt --provider lm_studio
 - `-l, --language CODE`: Language code for the summary (default: en). Examples: en, zh, es, fr, de, ja, ko
 - `-c, --context TEXT_OR_FILE`: Additional context to help with summarization. Can be direct text or a file path
 - `-f, --force`: Force processing even if output file already exists (overwrite existing files)
+- `--force-text`: Force processing of unknown file types (attempt to process as text)
+- `--full-context`: Process subtitle files with full context (preserve timestamps and formatting)
+- `--suggest-filenames`: After summarization, suggest better filenames using LLM
 - `--provider PROVIDER`: Override LLM provider (lm_studio, openai, qwen)
 - `--config PATH`: Use a custom config file
-- `--init-config`: Initialize config file in default location
+- `--init-config`: Initialize config and prompts files in default location
 - `-v, --verbose`: Verbose output
 - `-h, --help`: Show help message
 
 ## Configuration
 
-The configuration file is located at `~/.srt-summarizor/config.yaml`.
+Configuration files are located in `~/.txt-sum/`:
+- `config.yaml` - LLM provider settings and general configuration
+- `prompts.yaml` - Prompt templates for summarization
 
 ### Default Configuration Structure
 
+**config.yaml:**
 ```yaml
 default_output_path: ~/Documents/summaries
 llm_provider: lm_studio
@@ -145,27 +165,33 @@ llm_settings:
     api_key: ""
     model: "qwen-turbo"
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-prompt_templates:
+default_prompt_template: default
+max_text_length: 100000
+prompts_file: ~/.txt-sum/prompts.yaml
+```
+
+**prompts.yaml:**
+```yaml
+templates:
   default: |
-    Please summarize the following subtitle content in a clear and concise manner.
-    Focus on the main themes, key events, and important dialogue.
+    Please summarize the following content in a clear and concise manner.
+    Focus on the main themes, key events, and important information.
     
-    Subtitle content:
+    Content:
     {content}
   detailed: |
-    Provide a detailed summary of the following subtitle content with:
+    Provide a detailed summary of the following content with:
     1. Overview
     2. Key Themes
     3. Important Events
-    4. Character Interactions
+    4. Main Points
     
-    Subtitle content:
+    Content:
     {content}
   brief: |
-    Create a brief summary (2-3 sentences) of the following subtitle content:
+    Create a brief summary (2-3 sentences) of the following content:
     
     {content}
-default_prompt_template: default
 ```
 
 ### Configuring LM Studio
@@ -184,13 +210,13 @@ default_prompt_template: default
 
 ### Adding Custom Prompt Templates
 
-Edit `~/.srt-summarizor/config.yaml` and add your template under `prompt_templates`:
+Edit `~/.txt-sum/prompts.yaml` and add your template under `templates`:
 
 ```yaml
-prompt_templates:
+templates:
   my_custom_template: |
     Your custom prompt here.
-    Use {content} as a placeholder for the subtitle content.
+    Use {content} as a placeholder for the text content.
     
     {content}
 ```
@@ -198,8 +224,10 @@ prompt_templates:
 Then use it with:
 
 ```bash
-srt-summarizor input.srt -p my_custom_template
+txt-sum input.srt -p my_custom_template
 ```
+
+**Note**: Prompt templates are stored separately in `prompts.yaml` for easy editing and reuse across different virtual environments and computers.
 
 ### Using Additional Context
 
@@ -213,10 +241,10 @@ The `-c/--context` flag allows you to provide additional context that helps the 
 
 ```bash
 # Provide context as direct text
-srt-summarizor meeting.srt -c "This is a product planning meeting. Focus on feature requirements and timeline discussions."
+txt-sum meeting.srt -c "This is a product planning meeting. Focus on feature requirements and timeline discussions."
 
 # Provide context from a file
-srt-summarizor interview.srt -c interview-background.txt
+txt-sum interview.srt -c interview-background.txt
 ```
 
 The context file can contain any relevant information:
@@ -229,10 +257,17 @@ The context is appended to the prompt template, so the LLM can use it to generat
 
 ## Supported File Formats
 
+### Subtitle Formats (with specialized parsing)
 - **SRT** (`.srt`): SubRip subtitle format
 - **TXT** (`.txt`): Plain text files
 - **VTT** (`.vtt`): WebVTT format
 - **ASS/SSA** (`.ass`, `.ssa`): Advanced SubStation Alpha format
+
+### Any Text File
+- The tool can process **any text-based file** by default
+- Binary files are automatically detected and skipped (use `--force-text` to attempt processing)
+- Timestamps and formatting are automatically removed from subtitle files to reduce text size
+- Use `--full-context` to preserve timestamps and formatting when needed
 
 ## LLM Providers
 
@@ -250,7 +285,7 @@ The context is appended to the prompt template, so the LLM can use it to generat
 ### Example 1: Quick Summary
 
 ```bash
-srt-summarizor episode.srt
+txt-sum episode.srt
 ```
 
 Output: `episode.md` with a summary of the episode.
@@ -258,16 +293,32 @@ Output: `episode.md` with a summary of the episode.
 ### Example 2: Detailed Summary with Custom Output
 
 ```bash
-srt-summarizor movie.srt -o ~/Documents/movie_summary.md -p detailed
+txt-sum movie.srt -o ~/Documents/movie_summary.md -p detailed
 ```
 
 ### Example 3: Batch Process Multiple Files
 
 ```bash
-srt-summarizor episode1.srt episode2.srt episode3.srt -o ~/summaries/
+txt-sum episode1.srt episode2.srt episode3.srt -o ~/summaries/
 ```
 
 All summaries will be saved in `~/summaries/` directory.
+
+### Example 4: Process Any Text File
+
+```bash
+txt-sum document.txt
+txt-sum logfile.log --force-text
+txt-sum code.py --force-text
+```
+
+### Example 5: With Filename Suggestions
+
+```bash
+txt-sum input.srt --suggest-filenames
+```
+
+The tool will suggest better filenames and ask for confirmation.
 
 ## Troubleshooting
 
@@ -286,21 +337,34 @@ All summaries will be saved in `~/summaries/` directory.
 
 ### Configuration Issues
 
-- Run `srt-summarizor --init-config` to create a fresh config file
-- Check YAML syntax in `~/.srt-summarizor/config.yaml`
+- Run `txt-sum --init-config` to create fresh config and prompts files
+- Check YAML syntax in `~/.txt-sum/config.yaml` and `~/.txt-sum/prompts.yaml`
 - Verify all required fields are present
+
+### File Length Limits
+
+- Files exceeding the maximum text length (default: 100,000 characters) are automatically skipped
+- Adjust `max_text_length` in `config.yaml` to change the limit
+- Skipped files are reported at the end of batch processing
 
 ## Development
 
 ### Project Structure
 
 ```
-srt-summarizor/
-├── srt_summarizor/
+txt-sum/
+├── txt_sum/
 │   ├── cli.py              # CLI interface
 │   ├── config.py           # Configuration management
-│   ├── parser.py           # Subtitle file parsers
+│   ├── parser.py           # Text file parsers
 │   ├── summarizer.py       # Main summarization logic
+│   ├── utils/              # Utility modules
+│   │   ├── file_utils.py   # File operations
+│   │   ├── text_utils.py   # Text processing
+│   │   └── cli_utils.py    # CLI helpers
+│   ├── prompts/            # Prompt management
+│   │   ├── manager.py      # Prompt manager
+│   │   └── defaults.py     # Default prompts
 │   └── llm/
 │       ├── base.py         # LLM provider base class
 │       └── lm_studio.py    # LM Studio implementation
@@ -339,7 +403,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Support
 
-For issues, questions, or feature requests, please open an issue on [GitHub](https://github.com/youyoubilly/srt-summarizor/issues).
+For issues, questions, or feature requests, please open an issue on [GitHub](https://github.com/youyoubilly/txt-sum/issues).
 
 ## Author
 

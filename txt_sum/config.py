@@ -1,4 +1,4 @@
-"""Configuration management for SRT Summarizor."""
+"""Configuration management for txt-sum."""
 
 import os
 import yaml
@@ -7,10 +7,11 @@ from typing import Dict, Any, Optional
 
 
 class Config:
-    """Manages configuration for SRT Summarizor."""
+    """Manages configuration for txt-sum."""
     
-    CONFIG_DIR = Path.home() / ".srt-summarizor"
+    CONFIG_DIR = Path.home() / ".txt-sum"
     CONFIG_FILE = CONFIG_DIR / "config.yaml"
+    PROMPTS_FILE = CONFIG_DIR / "prompts.yaml"
     
     DEFAULT_CONFIG = {
         "default_output_path": "~/Documents/summaries",
@@ -31,26 +32,9 @@ class Config:
                 "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             },
         },
-        "prompt_templates": {
-            "default": (
-                "Please summarize the following subtitle content in a clear and concise manner.\n"
-                "Focus on the main themes, key events, and important dialogue.\n\n"
-                "Subtitle content:\n{content}"
-            ),
-            "detailed": (
-                "Provide a detailed summary of the following subtitle content with:\n"
-                "1. Overview\n"
-                "2. Key Themes\n"
-                "3. Important Events\n"
-                "4. Character Interactions\n\n"
-                "Subtitle content:\n{content}"
-            ),
-            "brief": (
-                "Create a brief summary (2-3 sentences) of the following subtitle content:\n\n"
-                "{content}"
-            ),
-        },
         "default_prompt_template": "default",
+        "max_text_length": 100000,
+        "prompts_file": str(PROMPTS_FILE),
     }
     
     def __init__(self, config_path: Optional[Path] = None):
@@ -166,20 +150,14 @@ class Config:
         settings = self.get(f"llm_settings.{provider}", {})
         return settings.copy()
     
-    def get_prompt_template(self, template_name: Optional[str] = None) -> str:
-        """Get a prompt template.
-        
-        Args:
-            template_name: Template name. If None, uses default template.
+    def get_prompts_file(self) -> Path:
+        """Get path to prompts.yaml file.
         
         Returns:
-            Prompt template string.
+            Path to prompts file.
         """
-        template_name = template_name or self.get("default_prompt_template", "default")
-        template = self.get(f"prompt_templates.{template_name}")
-        if not template:
-            raise ValueError(f"Prompt template '{template_name}' not found")
-        return template
+        prompts_path = self.get("prompts_file", str(self.PROMPTS_FILE))
+        return Path(prompts_path).expanduser()
     
     @classmethod
     def init_config(cls, config_path: Optional[Path] = None) -> Path:
@@ -193,5 +171,13 @@ class Config:
         """
         config = cls(config_path)
         config.save()
+        
+        # Also initialize prompts.yaml if it doesn't exist
+        from txt_sum.prompts.manager import PromptManager
+        prompts_file = config.get_prompts_file()
+        if not prompts_file.exists():
+            prompt_manager = PromptManager(prompts_file)
+            prompt_manager.init_default_prompts()
+        
         return config.config_path
 

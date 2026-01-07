@@ -1,6 +1,6 @@
-# Contributing to SRT Summarizor
+# Contributing to txt-sum
 
-Thank you for your interest in contributing to SRT Summarizor! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to txt-sum! This document provides guidelines and instructions for contributing.
 
 ## How to Contribute
 
@@ -34,8 +34,8 @@ We welcome feature suggestions! Please open an issue describing:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/youyoubilly/srt-summarizor.git
-   cd srt-summarizor
+   git clone https://github.com/youyoubilly/txt-sum.git
+   cd txt-sum
    ```
 
 2. Install in development mode:
@@ -45,7 +45,7 @@ We welcome feature suggestions! Please open an issue describing:
 
 3. Test the installation:
    ```bash
-   srt-summarizor --help
+   txt-sum --help
    ```
 
 ## Code Style
@@ -60,7 +60,10 @@ We welcome feature suggestions! Please open an issue describing:
 
 Before submitting a PR, please test your changes:
 - Test with different subtitle formats (SRT, TXT, VTT, ASS/SSA)
+- Test with various text file types
 - Test with various file encodings
+- Test binary file detection
+- Test text length limit handling
 - Test with different LLM providers (if applicable)
 - Ensure existing functionality still works
 - Test batch processing if you modified related code
@@ -68,12 +71,13 @@ Before submitting a PR, please test your changes:
 ## Areas for Contribution
 
 - **New LLM Providers**: Add support for additional LLM APIs (OpenAI, Qwen, etc.)
-- **Subtitle Format Support**: Add parsers for additional subtitle formats
+- **Text Format Support**: Add parsers for additional text formats
 - **Prompt Templates**: Share useful prompt templates
 - **Documentation**: Improve documentation, add examples, fix typos
 - **Bug Fixes**: Fix issues reported in the issue tracker
 - **Performance**: Optimize parsing or processing speed
 - **Error Handling**: Improve error messages and handling
+- **Utility Functions**: Add useful utility functions to the utils/ modules
 
 ## Questions?
 

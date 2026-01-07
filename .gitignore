@@ -71,3 +71,4 @@ test_files/
 # Config files (user's local config should not be committed)
 # Note: Keep default config structure in code, but not user's actual config
 
+.cursor/plans/
