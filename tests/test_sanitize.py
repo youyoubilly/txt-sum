@@ -1,7 +1,7 @@
 """Tests for sanitization logic."""
 
 import pytest
-from txt_sum.app.sanitize import sanitize_llm_response
+from txtguy.app.sanitize import sanitize_llm_response
 
 
 def test_sanitize_no_thinking_tags():

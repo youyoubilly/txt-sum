@@ -1,7 +1,7 @@
 """Tests for chunking logic."""
 
 import pytest
-from txt_sum.app.chunking import chunk_content
+from txtguy.app.chunking import chunk_content
 
 
 def test_chunk_content_small():

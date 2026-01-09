@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 import tempfile
-from txt_sum.parser import SubtitleParser, SubtitleEntry
+from txtguy.parser import SubtitleParser, SubtitleEntry
 
 
 def test_parse_txt_file():

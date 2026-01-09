@@ -1,11 +1,11 @@
 """Tests for provider registry."""
 
 import pytest
-from txt_sum.llm.registry import ProviderRegistry
-from txt_sum.llm.providers.base import BaseLLMProvider
-from txt_sum.llm.providers.lm_studio import LMStudioProvider
-from txt_sum.llm.providers.qwen import QwenProvider
-from txt_sum.llm.providers.openai import OpenAIProvider
+from txtguy.llm.registry import ProviderRegistry
+from txtguy.llm.providers.base import BaseLLMProvider
+from txtguy.llm.providers.lm_studio import LMStudioProvider
+from txtguy.llm.providers.qwen import QwenProvider
+from txtguy.llm.providers.openai import OpenAIProvider
 
 
 def test_registry_list_providers():

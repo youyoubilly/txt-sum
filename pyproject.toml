@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "txt-sum"
+name = "txtguy"
 version = "0.1.0"
-description = "A tool to summarize text files using LLM APIs"
+description = "A versatile text processing tool with LLM integration"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
     {name = "Billy Wang", email = "billy@techxartisan.com"}
 ]
-keywords = ["text", "document", "file", "llm", "summarization", "ai", "transcript", "summary", "srt", "subtitle"]
+keywords = ["text", "document", "file", "llm", "summarization", "ai", "transcript", "summary", "srt", "subtitle", "rename", "processing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.scripts]
-txt-sum = "txt_sum.cli:main"
+txtguy = "txtguy.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/youyoubilly/txt-sum"
@@ -50,5 +50,5 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["txt_sum*"]
+include = ["txtguy*"]
 

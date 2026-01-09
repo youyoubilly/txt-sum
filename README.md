@@ -1,21 +1,23 @@
-# txt-sum
+# txtguy
 
-> **Smart text file summarization using LLM APIs**
+> **A versatile text processing tool with LLM integration**
 
-A Python command-line tool to summarize text files using LLM APIs. Supports subtitle formats (SRT, TXT, VTT, ASS/SSA) and any text-based file. Perfect for quickly understanding the content of video subtitles, transcripts, dialogue files, documents, and more.
+A Python command-line tool for processing text files using LLM APIs. Supports summarization with multiple format options (short, long, blog-style), filename suggestions, and more. Works with subtitle formats (SRT, TXT, VTT, ASS/SSA) and any text-based file. Perfect for quickly understanding content, organizing files, and creating structured summaries.
 
 > **Note**: This tool was primarily developed with AI assistance (vibe coding), starting from initial concepts and requirements by Billy Wang. While the code has been tested and is functional, users are advised to use it at their own discretion and responsibility. Please review the code and test thoroughly for your specific use cases.
 
 ## Features
 
+- **Subcommand Architecture**: Modular design with `summarize`, `rename`, `template`, and `config` subcommands
+- **Multiple Summary Formats**: Choose from short, long, or blog-style summaries via template categories
+- **Template System**: Categorized templates (short/long/blog) with custom template support
 - **Any Text File Support**: Process subtitle formats (SRT, TXT, VTT, ASS/SSA) and any text-based file
 - **Smart Formatting Removal**: Automatically strips timestamps and formatting from subtitle files to reduce text size
-- **LLM Integration**: Works with local LLM servers (LM Studio) and cloud APIs (OpenAI, Alibaba Qwen - coming soon)
-- **Configurable Prompts**: Customize summarization style with prompt templates stored in `~/.txt-sum/prompts.yaml`
+- **LLM Integration**: Works with local LLM servers (LM Studio) and cloud APIs (OpenAI, Alibaba Qwen)
+- **Filename Suggestions**: AI-powered filename recommendations with interactive selection
 - **Batch Processing**: Process multiple files at once
 - **Text Length Limits**: Automatically skips files that exceed configurable length limits
-- **Filename Suggestions**: AI-powered filename recommendations with interactive selection
-- **Easy Configuration**: Simple YAML-based configuration stored in `~/.txt-sum/`
+- **Easy Configuration**: Simple YAML-based configuration stored in `~/.txtguy/`
 
 ## Installation
 
@@ -26,14 +28,14 @@ A Python command-line tool to summarize text files using LLM APIs. Supports subt
 git clone https://github.com/youyoubilly/txt-sum.git
 cd txt-sum
 
-# Install the package
+# Install the package in development mode
 pip install -e .
 ```
 
 ### From PyPI (when published)
 
 ```bash
-pip install txt-sum
+pip install txtguy
 ```
 
 ## Quick Start
@@ -41,16 +43,16 @@ pip install txt-sum
 1. **Initialize Configuration**
 
    ```bash
-   txt-sum --init-config
+   txtguy config init
    ```
 
    This creates configuration files at:
-   - `~/.txt-sum/config.yaml` - LLM provider settings
-   - `~/.txt-sum/prompts.yaml` - Prompt templates
+   - `~/.txtguy/config.yaml` - LLM provider settings
+   - `~/.txtguy/templates.yaml` - Template categories and custom templates
 
 2. **Edit Configuration**
 
-   Open `~/.txt-sum/config.yaml` and configure your LLM provider:
+   Open `~/.txtguy/config.yaml` and configure your LLM provider:
 
    ```yaml
    llm_provider: lm_studio
@@ -70,82 +72,144 @@ pip install txt-sum
 4. **Summarize a File**
 
    ```bash
-   txt-sum movie.srt
+   txtguy summarize movie.srt
    ```
 
    This creates `movie.md` in the same directory as the input file.
 
 ## Usage
 
-### Basic Usage
+### Summarize Subcommand
+
+The `summarize` subcommand handles text file summarization with multiple format options.
+
+#### Basic Usage
 
 ```bash
 # Single file
-txt-sum input.srt
+txtguy summarize input.srt
 
 # Multiple files (batch processing)
-txt-sum file1.srt file2.txt file3.vtt
+txtguy summarize file1.srt file2.txt file3.vtt
 
 # Process all text files in a folder
-txt-sum /path/to/files/
+txtguy summarize /path/to/files/
 
 # Mix files and folders
-txt-sum file1.srt /path/to/folder/ file2.txt
+txtguy summarize file1.srt /path/to/folder/ file2.txt
 
 # Process any text file (not just subtitles)
-txt-sum document.txt --force-text
+txtguy summarize document.txt --force-text
 
 # Specify output file
-txt-sum input.srt -o summary.md
-
-# Use a specific prompt template
-txt-sum input.srt -p detailed
-
-# Specify summary language (default: en)
-txt-sum input.srt -l en
-txt-sum input.srt -l zh  # Chinese
-txt-sum input.srt -l es  # Spanish
-
-# Add additional context (direct text)
-txt-sum call.srt -c "this is a sale call from api provider to a company manager"
-
-# Add additional context (from file)
-txt-sum call.srt -c extra-context.txt
-
-# Process folder with force (overwrite existing outputs)
-txt-sum /path/to/files/ --force
-
-# Override LLM provider
-txt-sum input.srt --provider lm_studio
-
-# Preserve timestamps and formatting (for subtitle files)
-txt-sum input.srt --full-context
-
-# Suggest better filenames after summarization
-txt-sum input.srt --suggest-filenames
+txtguy summarize input.srt -o summary.md
 ```
 
-### Command Options
+#### Format Options
 
-- `-o, --output PATH`: Output file path (single file) or directory (multiple files)
-- `-p, --prompt-template NAME`: Use a specific prompt template
-- `-l, --language CODE`: Language code for the summary (default: en). Examples: en, zh, es, fr, de, ja, ko
-- `-c, --context TEXT_OR_FILE`: Additional context to help with summarization. Can be direct text or a file path
-- `-f, --force`: Force processing even if output file already exists (overwrite existing files)
-- `--force-text`: Force processing of unknown file types (attempt to process as text)
-- `--full-context`: Process subtitle files with full context (preserve timestamps and formatting)
-- `--suggest-filenames`: After summarization, suggest better filenames using LLM
-- `--provider PROVIDER`: Override LLM provider (lm_studio, openai, qwen)
-- `--config PATH`: Use a custom config file
-- `--init-config`: Initialize config and prompts files in default location
-- `-v, --verbose`: Verbose output
-- `-h, --help`: Show help message
+```bash
+# Use short format (brief summary)
+txtguy summarize input.srt --format short
+
+# Use long format (detailed summary)
+txtguy summarize input.srt --format long
+
+# Use blog format (blog-style article)
+txtguy summarize input.srt --format blog
+
+# Use a specific template by name
+txtguy summarize input.srt --template my_custom_template
+
+# Use a template from a specific category
+txtguy summarize input.srt --template default --category short
+```
+
+#### Advanced Options
+
+```bash
+# Specify summary language (default: en)
+txtguy summarize input.srt -l en
+txtguy summarize input.srt -l zh  # Chinese
+txtguy summarize input.srt -l es  # Spanish
+
+# Add additional context (direct text)
+txtguy summarize call.srt -c "this is a sale call from api provider to a company manager"
+
+# Add additional context (from file)
+txtguy summarize call.srt -c extra-context.txt
+
+# Process folder with force (overwrite existing outputs)
+txtguy summarize /path/to/files/ --force
+
+# Override LLM provider
+txtguy summarize input.srt --provider lm_studio
+
+# Preserve timestamps and formatting (for subtitle files)
+txtguy summarize input.srt --full-context
+
+# Verbose output
+txtguy summarize input.srt -v
+```
+
+### Rename Subcommand
+
+The `rename` subcommand suggests and renames files based on their content.
+
+```bash
+# Suggest filenames based on file content
+txtguy rename file.srt
+
+# Use existing summary file for better suggestions
+txtguy rename file.srt --with-summary summary.md
+
+# Batch rename multiple files
+txtguy rename *.srt
+
+# Verbose output
+txtguy rename file.srt -v
+```
+
+### Template Subcommand
+
+The `template` subcommand manages template categories and custom templates.
+
+```bash
+# List all templates and categories
+txtguy template list
+
+# List templates in a specific category
+txtguy template list --category short
+
+# Show template content
+txtguy template show default
+
+# Show template from a category
+txtguy template show default --category short
+
+# Create a new template
+txtguy template create my_template
+
+# Create a template in a category
+txtguy template create my_template --category short
+```
+
+### Config Subcommand
+
+The `config` subcommand manages configuration.
+
+```bash
+# Show current configuration
+txtguy config show
+
+# Initialize configuration files
+txtguy config init
+```
 
 ## Configuration
 
-Configuration files are located in `~/.txt-sum/`:
+Configuration files are located in `~/.txtguy/`:
 - `config.yaml` - LLM provider settings and general configuration
-- `prompts.yaml` - Prompt templates for summarization
+- `templates.yaml` - Template categories and custom templates
 
 ### Default Configuration Structure
 
@@ -167,29 +231,52 @@ llm_settings:
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 default_prompt_template: default
 max_text_length: 100000
-prompts_file: ~/.txt-sum/prompts.yaml
+templates_file: ~/.txtguy/templates.yaml
 ```
 
-**prompts.yaml:**
+**templates.yaml:**
 ```yaml
-templates:
-  default: |
-    Please summarize the following content in a clear and concise manner.
-    Focus on the main themes, key events, and important information.
-    
-    Content:
-    {content}
-  detailed: |
-    Provide a detailed summary of the following content with:
-    1. Overview
-    2. Key Themes
-    3. Important Events
-    4. Main Points
-    
-    Content:
-    {content}
-  brief: |
-    Create a brief summary (2-3 sentences) of the following content:
+categories:
+  short:
+    default: |
+      Create a brief summary (2-3 sentences) of the following content.
+      Focus on the main point and key information.
+      
+      Content:
+      {content}
+    concise: |
+      Create a one-sentence summary of the following content:
+      
+      {content}
+  
+  long:
+    default: |
+      Provide a detailed summary of the following content with:
+      1. Overview
+      2. Key Themes
+      3. Important Events
+      4. Main Points
+      5. Conclusion
+      
+      Content:
+      {content}
+  
+  blog:
+    default: |
+      Write a blog-style article based on the following content.
+      Include:
+      - An engaging introduction that hooks the reader
+      - Well-organized main content sections with clear headings
+      - A compelling conclusion
+      - Natural, conversational tone
+      
+      Content:
+      {content}
+
+custom:
+  my_template: |
+    Your custom prompt here.
+    Use {content} as a placeholder for the text content.
     
     {content}
 ```
@@ -208,26 +295,45 @@ templates:
        base_url: http://localhost:1234/v1
    ```
 
-### Adding Custom Prompt Templates
+### Template Categories
 
-Edit `~/.txt-sum/prompts.yaml` and add your template under `templates`:
+txtguy comes with three default template categories:
 
-```yaml
-templates:
-  my_custom_template: |
-    Your custom prompt here.
-    Use {content} as a placeholder for the text content.
-    
-    {content}
-```
+- **short**: Brief summaries (2-3 sentences or one sentence)
+- **long**: Detailed summaries with structured sections
+- **blog**: Blog-style articles with engaging introductions and conclusions
 
-Then use it with:
+Each category has a `default` template, and you can add more templates to any category.
 
+### Adding Custom Templates
+
+You can add custom templates in two ways:
+
+1. **Using the CLI:**
+   ```bash
+   txtguy template create my_template
+   txtguy template create my_template --category short
+   ```
+
+2. **Editing templates.yaml directly:**
+   ```yaml
+   categories:
+     short:
+       my_custom: |
+         Your custom prompt here.
+         {content}
+   
+   custom:
+     my_standalone_template: |
+       Another custom template.
+       {content}
+   ```
+
+Then use them with:
 ```bash
-txt-sum input.srt -p my_custom_template
+txtguy summarize input.srt --template my_custom --category short
+txtguy summarize input.srt --template my_standalone_template
 ```
-
-**Note**: Prompt templates are stored separately in `prompts.yaml` for easy editing and reuse across different virtual environments and computers.
 
 ### Using Additional Context
 
@@ -241,10 +347,10 @@ The `-c/--context` flag allows you to provide additional context that helps the 
 
 ```bash
 # Provide context as direct text
-txt-sum meeting.srt -c "This is a product planning meeting. Focus on feature requirements and timeline discussions."
+txtguy summarize meeting.srt -c "This is a product planning meeting. Focus on feature requirements and timeline discussions."
 
 # Provide context from a file
-txt-sum interview.srt -c interview-background.txt
+txtguy summarize interview.srt -c interview-background.txt
 ```
 
 The context file can contain any relevant information:
@@ -274,9 +380,6 @@ The context is appended to the prompt template, so the LLM can use it to generat
 ### Currently Supported
 
 - **LM Studio**: Local LLM server (OpenAI-compatible API)
-
-### Coming Soon
-
 - **OpenAI**: GPT-3.5, GPT-4, etc.
 - **Alibaba Qwen**: Qwen models via DashScope API
 
@@ -285,40 +388,70 @@ The context is appended to the prompt template, so the LLM can use it to generat
 ### Example 1: Quick Summary
 
 ```bash
-txt-sum episode.srt
+txtguy summarize episode.srt
 ```
 
 Output: `episode.md` with a summary of the episode.
 
-### Example 2: Detailed Summary with Custom Output
+### Example 2: Short Format Summary
 
 ```bash
-txt-sum movie.srt -o ~/Documents/movie_summary.md -p detailed
+txtguy summarize episode.srt --format short
 ```
 
-### Example 3: Batch Process Multiple Files
+Output: A brief 2-3 sentence summary.
+
+### Example 3: Blog-Style Article
 
 ```bash
-txt-sum episode1.srt episode2.srt episode3.srt -o ~/summaries/
+txtguy summarize movie.srt --format blog
+```
+
+Output: A blog-style article with engaging introduction and structured content.
+
+### Example 4: Detailed Summary with Custom Output
+
+```bash
+txtguy summarize movie.srt -o ~/Documents/movie_summary.md --format long
+```
+
+### Example 5: Batch Process Multiple Files
+
+```bash
+txtguy summarize episode1.srt episode2.srt episode3.srt -o ~/summaries/
 ```
 
 All summaries will be saved in `~/summaries/` directory.
 
-### Example 4: Process Any Text File
+### Example 6: Process Any Text File
 
 ```bash
-txt-sum document.txt
-txt-sum logfile.log --force-text
-txt-sum code.py --force-text
+txtguy summarize document.txt
+txtguy summarize logfile.log --force-text
+txtguy summarize code.py --force-text
 ```
 
-### Example 5: With Filename Suggestions
+### Example 7: Rename Files with AI Suggestions
 
 ```bash
-txt-sum input.srt --suggest-filenames
+txtguy rename file.srt
 ```
 
-The tool will suggest better filenames and ask for confirmation.
+The tool will analyze the file content and suggest better filenames.
+
+### Example 8: Using Custom Templates
+
+```bash
+# Create a custom template
+txtguy template create technical_summary
+
+# Use it
+txtguy summarize meeting.srt --template technical_summary
+```
+
+## Migration from txt-sum
+
+If you were using the previous `txt-sum` tool, your configuration will be automatically migrated to `~/.txtguy/` the first time you run txtguy. The old `~/.txt-sum/` directory will remain as a backup.
 
 ## Troubleshooting
 
@@ -337,8 +470,8 @@ The tool will suggest better filenames and ask for confirmation.
 
 ### Configuration Issues
 
-- Run `txt-sum --init-config` to create fresh config and prompts files
-- Check YAML syntax in `~/.txt-sum/config.yaml` and `~/.txt-sum/prompts.yaml`
+- Run `txtguy config init` to create fresh config and templates files
+- Check YAML syntax in `~/.txtguy/config.yaml` and `~/.txtguy/templates.yaml`
 - Verify all required fields are present
 
 ### File Length Limits
@@ -347,16 +480,29 @@ The tool will suggest better filenames and ask for confirmation.
 - Adjust `max_text_length` in `config.yaml` to change the limit
 - Skipped files are reported at the end of batch processing
 
+### Template Not Found
+
+- Use `txtguy template list` to see all available templates
+- Check if you're using the correct category with `--category` flag
+- Verify template names are spelled correctly
+
 ## Development
 
 ### Project Structure
 
 ```
-txt-sum/
+txtguy/
 ├── docs/
 │   └── architecture.md     # Architecture documentation with diagrams
-├── txt_sum/
-│   ├── cli.py              # CLI interface
+├── txtguy/
+│   ├── cli/                # CLI subcommands
+│   │   ├── __init__.py     # Main CLI group
+│   │   ├── summarize.py    # Summarize subcommand
+│   │   ├── rename.py       # Rename subcommand
+│   │   ├── template.py     # Template management
+│   │   ├── config.py       # Config management
+│   │   └── base.py         # Base subcommand class
+│   ├── cli.py              # Legacy CLI (backward compatibility)
 │   ├── config.py           # Configuration management
 │   ├── parser.py           # Text file parsers
 │   ├── summarizer.py       # Backward-compatible wrapper
@@ -367,26 +513,29 @@ txt-sum/
 │   │   ├── summarize.py    # Main orchestration
 │   │   ├── chunking.py     # Content chunking
 │   │   ├── sanitize.py     # Response cleanup
-│   │   └── output.py       # Output formatting
+│   │   ├── output.py       # Output formatting
+│   │   └── filename_suggest.py  # Filename suggestions
 │   ├── utils/              # Utility modules
 │   │   ├── file_utils.py   # File operations
 │   │   ├── text_utils.py   # Text processing
 │   │   └── cli_utils.py    # CLI helpers
-│   ├── prompts/            # Prompt management
-│   │   ├── manager.py      # Prompt manager
-│   │   └── defaults.py     # Default prompts
+│   ├── prompts/            # Template management
+│   │   ├── manager.py      # Template manager
+│   │   ├── categories.py   # Default category templates
+│   │   └── defaults.py     # Legacy default templates
 │   └── llm/                # LLM provider layer
 │       ├── registry.py     # Provider registry
 │       └── providers/      # Provider implementations
-│           ├── base.py     # Base provider class
-│           ├── lm_studio.py    # LM Studio
-│           ├── qwen.py     # Alibaba Qwen
-│           └── openai.py   # OpenAI
-├── tests/                  # Test suite
+│           ├── base.py      # Base provider class
+│           ├── lm_studio.py # LM Studio
+│           ├── qwen.py      # Alibaba Qwen
+│           └── openai.py    # OpenAI
+├── tests/                   # Test suite
 │   ├── test_chunking.py
 │   ├── test_sanitize.py
 │   ├── test_parser.py
-│   └── test_provider_registry.py
+│   ├── test_provider_registry.py
+│   └── test_filename_suggest.py
 ├── pyproject.toml          # Package configuration
 └── README.md               # This file
 ```
@@ -403,7 +552,7 @@ pip install -e ".[dev]"
 pytest
 
 # Run tests with coverage
-pytest --cov=txt_sum
+pytest --cov=txtguy
 
 # Run specific test file
 pytest tests/test_chunking.py
@@ -426,14 +575,31 @@ pytest -v
 
 3. **Check code structure:**
    - See `docs/architecture.md` for architecture guidelines
-   - New LLM providers go in `txt_sum/llm/providers/`
-   - Register new providers in `txt_sum/llm/registry.py`
+   - New LLM providers go in `txtguy/llm/providers/`
+   - Register new providers in `txtguy/llm/registry.py`
    - Add tests for new functionality
 
-4. **Add a new LLM provider:**
+4. **Add a new subcommand:**
    ```python
-   # 1. Create txt_sum/llm/providers/my_provider.py
-   from txt_sum.llm.providers.base import BaseLLMProvider
+   # 1. Create txtguy/cli/my_subcommand.py
+   import click
+   from txtguy.cli.base import BaseSubcommand
+   
+   @click.command()
+   def my_subcommand():
+       """My new subcommand."""
+       # Implementation
+       pass
+   
+   # 2. Register in txtguy/cli/__init__.py
+   from txtguy.cli.my_subcommand import my_subcommand
+   cli.add_command(my_subcommand)
+   ```
+
+5. **Add a new LLM provider:**
+   ```python
+   # 1. Create txtguy/llm/providers/my_provider.py
+   from txtguy.llm.providers.base import BaseLLMProvider
    
    class MyProvider(BaseLLMProvider):
        def validate_config(self):
@@ -444,8 +610,8 @@ pytest -v
            # Implementation
            return summary
    
-   # 2. Register in txt_sum/llm/registry.py
-   from txt_sum.llm.providers.my_provider import MyProvider
+   # 2. Register in txtguy/llm/registry.py
+   from txtguy.llm.providers.my_provider import MyProvider
    
    _providers = {
        "my_provider": MyProvider,
@@ -479,4 +645,3 @@ For issues, questions, or feature requests, please open an issue on [GitHub](htt
 ## Author
 
 **Billy Wang** - billy@techxartisan.com
-

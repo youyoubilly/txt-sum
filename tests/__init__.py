@@ -1,2 +1,2 @@
-"""Tests for txt-sum."""
+"""Tests for txtguy."""
 
