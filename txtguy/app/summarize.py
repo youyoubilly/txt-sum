@@ -203,13 +203,23 @@ class SummarizerOrchestrator:
         # Convert language code to full name for prompt
         language_name = get_language_name(language)
         
-        # Add language instruction to prompt
-        language_instruction = (
-            f"\n\nIMPORTANT: Write the summary in {language_name}. "
-            "Do not include any thinking process, reasoning, or meta-commentary. "
-            "Only provide the final summary."
-        )
-        enhanced_prompt = prompt + language_instruction
+        # Create strong language instruction at the beginning of the prompt
+        if language.lower() != "en":
+            language_instruction = (
+                f"CRITICAL: You must write the entire summary in {language_name}. "
+                f"All content, including headings, sections, paragraphs, and any text, must be in {language_name}. "
+                f"Do not use English or any other language. Only use {language_name}. "
+                "Do not include any thinking process, reasoning, or meta-commentary. "
+                f"Only provide the final summary in {language_name}.\n\n"
+            )
+        else:
+            language_instruction = (
+                "Do not include any thinking process, reasoning, or meta-commentary. "
+                "Only provide the final summary.\n\n"
+            )
+        
+        # Place language instruction BEFORE the template prompt content
+        enhanced_prompt = language_instruction + prompt
         
         # Add extra context if provided (only once, not duplicated in chunking)
         if extra_context:
@@ -250,6 +260,7 @@ class SummarizerOrchestrator:
         
         # Generate summary for each chunk
         for i, chunk in enumerate(chunks):
+            # Ensure language instruction is prominent in chunk prompts
             chunk_prompt = (
                 f"This is chunk {i+1} of {len(chunks)}. "
                 f"Provide a summary focusing on the key points:\n\n{enhanced_prompt}"
@@ -261,12 +272,25 @@ class SummarizerOrchestrator:
         # Combine summaries if we have multiple chunks
         if len(summaries) > 1:
             combined_content = "\n\n".join(summaries)
-            final_prompt = (
-                f"The following are summaries of different parts of a text file. "
-                f"Please combine them into a single coherent summary in {language_name}. "
-                "Do not include any thinking process or reasoning - only the final summary.\n\n"
-                "{content}"
-            )
+            # Create strong language instruction for final combination
+            if language_name.lower() != "english":
+                final_prompt = (
+                    f"CRITICAL: You must write the entire combined summary in {language_name}. "
+                    f"All content, including headings, sections, paragraphs, and any text, must be in {language_name}. "
+                    f"Do not use English or any other language. Only use {language_name}.\n\n"
+                    f"The following are summaries of different parts of a text file. "
+                    f"Please combine them into a single coherent summary in {language_name}. "
+                    "Do not include any thinking process, reasoning, or meta-commentary. "
+                    "Only provide the final summary.\n\n"
+                    "{content}"
+                )
+            else:
+                final_prompt = (
+                    f"The following are summaries of different parts of a text file. "
+                    f"Please combine them into a single coherent summary. "
+                    "Do not include any thinking process or reasoning - only the final summary.\n\n"
+                    "{content}"
+                )
             result = self.llm_provider.generate(final_prompt, combined_content, **kwargs)
             return sanitize_llm_response(result)
         else:
